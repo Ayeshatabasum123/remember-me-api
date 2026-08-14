@@ -1,0 +1,54 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: remember-me-api
+
+  datasource:
+    url: jdbc:postgresql://localhost:5433/graveyard_mapping_db
+    username: postgres
+    password: Ayesha@123
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: your_email@gmail.com
+    password: your_app_password
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+jwt:
+  secret: 557fd23bca817f0f74e9e59be9bf305915cbbe2ae5400474002aa1e2a2aa4a8f3d0cdc7011dccbc05435dc0b74bb25ff4724af8070955390ba0d97b9c79db53b
+  expiration: 86400000        # 24 hours (access token)
+  refresh-expiration: 604800000  # 7 days (refresh token)
+
+aws:
+  s3:
+    bucket-name: graveyard-mapping-media
+    region: ap-south-1
+    access-key: your_access_key
+    secret-key: your_secret_key
+
+firebase:
+  service-account-file: firebase-service-account.json
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html

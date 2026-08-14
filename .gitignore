@@ -1,0 +1,9 @@
+target/
+*.class
+.idea/
+*.iml
+.vscode/
+.DS_Store
+application-local.yml
+firebase-service-account.json
+*.log

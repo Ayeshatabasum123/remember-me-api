@@ -1,0 +1,39 @@
+package com.rememberme.api.entity;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "memorials")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class Memorial {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @OneToOne
+    @JoinColumn(name = "deceased_person_id", nullable = false)
+    private DeceasedPerson deceasedPerson;
+
+    @Column(columnDefinition = "TEXT")
+    private String biography;
+
+    @Column(columnDefinition = "TEXT")
+    private String prayerOrMessage;
+
+    @ManyToOne
+    @JoinColumn(name = "created_by_user_id")
+    private User createdBy;
+
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+}
