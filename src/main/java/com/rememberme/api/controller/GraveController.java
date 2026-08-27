@@ -11,6 +11,9 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import com.rememberme.api.exception.ApiException;
+import org.springframework.http.HttpStatus;
+
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -53,5 +56,13 @@ public class GraveController {
     @GetMapping("/{id}")
     public ApiResponse<Grave> getGrave(@PathVariable Long id) {
         return ApiResponse.success(graveRepository.findById(id).orElseThrow());
+    }
+
+    @DeleteMapping("/{id}")
+    public ApiResponse<Void> deleteGrave(@PathVariable Long id) {
+        Grave grave = graveRepository.findById(id)
+                .orElseThrow(() -> new ApiException("Grave not found with ID: " + id, HttpStatus.NOT_FOUND));
+        graveRepository.delete(grave);
+        return ApiResponse.success("Grave deleted successfully", null);
     }
 }
