@@ -17,6 +17,7 @@ import java.util.Optional;
 
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -54,5 +55,47 @@ public class GraveControllerTest {
         mockMvc.perform(delete("/api/graves/{id}", 1L))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").value("Grave not found with ID: 1"));
+    }
+
+    @Test
+    public void addGrave_Success() throws Exception {
+        RememberMe rememberMe = new RememberMe();
+        rememberMe.setId(1L);
+        when(rememberMeRepository.findById(1L)).thenReturn(Optional.of(rememberMe));
+        when(graveRepository.existsByRememberMeIdAndGraveNumberIgnoreCase(1L, "A-12")).thenReturn(false);
+
+        Grave saved = Grave.builder()
+                .id(10L)
+                .rememberMe(rememberMe)
+                .graveNumber("A-12")
+                .latitude(12.34)
+                .longitude(56.78)
+                .build();
+        when(graveRepository.save(any(Grave.class))).thenReturn(saved);
+
+        String json = "{\"rememberMeId\":1,\"graveNumber\":\"A-12\",\"latitude\":12.34,\"longitude\":56.78}";
+
+        mockMvc.perform(post("/api/graves")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.graveNumber").value("A-12"));
+    }
+
+    @Test
+    public void addGrave_Conflict() throws Exception {
+        RememberMe rememberMe = new RememberMe();
+        rememberMe.setId(1L);
+        when(rememberMeRepository.findById(1L)).thenReturn(Optional.of(rememberMe));
+        when(graveRepository.existsByRememberMeIdAndGraveNumberIgnoreCase(1L, "A-12")).thenReturn(true);
+
+        String json = "{\"rememberMeId\":1,\"graveNumber\":\"A-12\",\"latitude\":12.34,\"longitude\":56.78}";
+
+        mockMvc.perform(post("/api/graves")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Grave already exists."));
     }
 }

@@ -30,6 +30,11 @@ public class GraveController {
     public ApiResponse<Grave> addGrave(@Valid @RequestBody GraveRequest request) {
         RememberMe rememberMe = rememberMeRepository.findById(request.getRememberMeId()).orElseThrow();
 
+        String trimmedGraveNumber = request.getGraveNumber() != null ? request.getGraveNumber().trim() : "";
+        if (!trimmedGraveNumber.isEmpty() && graveRepository.existsByRememberMeIdAndGraveNumberIgnoreCase(rememberMe.getId(), trimmedGraveNumber)) {
+            throw new ApiException("Grave already exists.", HttpStatus.CONFLICT);
+        }
+
         Grave grave = Grave.builder()
                 .rememberMe(rememberMe)
                 .graveNumber(request.getGraveNumber())

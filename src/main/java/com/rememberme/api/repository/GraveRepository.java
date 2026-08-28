@@ -7,4 +7,5 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface GraveRepository extends JpaRepository<Grave, Long> {
     boolean existsByRememberMeId(Long rememberMeId);
+    boolean existsByRememberMeIdAndGraveNumberIgnoreCase(Long rememberMeId, String graveNumber);
 }
