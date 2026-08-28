@@ -17,6 +17,7 @@ import java.util.Optional;
 
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -68,5 +69,42 @@ public class RememberMeControllerTest {
         mockMvc.perform(delete("/api/graveyards/{id}", 1L))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Cannot delete graveyard: It has associated graves"));
+    }
+
+    @Test
+    public void addGraveyard_Success() throws Exception {
+        when(rememberMeRepository.existsByNameIgnoreCaseAndLatitudeAndLongitude("Greenwood", 12.34, 56.78))
+                .thenReturn(false);
+        
+        RememberMe saved = RememberMe.builder()
+                .id(1L)
+                .name("Greenwood")
+                .latitude(12.34)
+                .longitude(56.78)
+                .build();
+        when(rememberMeRepository.save(any(RememberMe.class))).thenReturn(saved);
+
+        String json = "{\"name\":\"Greenwood\",\"latitude\":12.34,\"longitude\":56.78}";
+
+        mockMvc.perform(post("/api/graveyards")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.name").value("Greenwood"));
+    }
+
+    @Test
+    public void addGraveyard_Conflict() throws Exception {
+        when(rememberMeRepository.existsByNameIgnoreCaseAndLatitudeAndLongitude("Greenwood", 12.34, 56.78))
+                .thenReturn(true);
+
+        String json = "{\"name\":\"Greenwood\",\"latitude\":12.34,\"longitude\":56.78}";
+
+        mockMvc.perform(post("/api/graveyards")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Graveyard already exists."));
     }
 }

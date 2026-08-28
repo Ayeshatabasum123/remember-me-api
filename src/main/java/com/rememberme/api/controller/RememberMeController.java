@@ -26,6 +26,11 @@ public class RememberMeController {
 
     @PostMapping
     public ApiResponse<RememberMe> addGraveyard(@Valid @RequestBody RememberMeRequest request) {
+        String trimmedName = request.getName() != null ? request.getName().trim() : "";
+        if (rememberMeRepository.existsByNameIgnoreCaseAndLatitudeAndLongitude(trimmedName, request.getLatitude(), request.getLongitude())) {
+            throw new ApiException("Graveyard already exists.", HttpStatus.CONFLICT);
+        }
+
         RememberMe rememberMe = RememberMe.builder()
                 .name(request.getName())
                 .address(request.getAddress())
