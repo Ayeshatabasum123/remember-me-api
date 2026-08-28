@@ -1,6 +1,7 @@
 package com.rememberme.api.controller;
 
 import com.rememberme.api.entity.Grave;
+import com.rememberme.api.entity.RememberMe;
 import com.rememberme.api.exception.ApiException;
 import com.rememberme.api.repository.GraveRepository;
 import com.rememberme.api.repository.RememberMeRepository;
