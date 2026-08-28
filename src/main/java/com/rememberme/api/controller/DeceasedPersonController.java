@@ -4,10 +4,14 @@ import com.rememberme.api.dto.request.DeceasedPersonRequest;
 import com.rememberme.api.dto.response.ApiResponse;
 import com.rememberme.api.entity.DeceasedPerson;
 import com.rememberme.api.entity.Grave;
+import com.rememberme.api.exception.ApiException;
 import com.rememberme.api.repository.DeceasedPersonRepository;
 import com.rememberme.api.repository.GraveRepository;
+import com.rememberme.api.repository.MemorialRepository;
+import com.rememberme.api.repository.RelationshipRepository;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -21,6 +25,8 @@ public class DeceasedPersonController {
 
     private final DeceasedPersonRepository deceasedPersonRepository;
     private final GraveRepository graveRepository;
+    private final MemorialRepository memorialRepository;
+    private final RelationshipRepository relationshipRepository;
 
     @PostMapping
     public ApiResponse<DeceasedPerson> addDeceasedPerson(@RequestBody DeceasedPersonRequest request) {
@@ -49,5 +55,22 @@ public class DeceasedPersonController {
     @GetMapping
     public ApiResponse<List<DeceasedPerson>> listAll() {
         return ApiResponse.success(deceasedPersonRepository.findAll());
+    }
+
+    @DeleteMapping("/{id}")
+    public ApiResponse<Void> deleteDeceasedPerson(@PathVariable Long id) {
+        DeceasedPerson person = deceasedPersonRepository.findById(id)
+                .orElseThrow(() -> new ApiException("Deceased person not found with ID: " + id, HttpStatus.NOT_FOUND));
+
+        if (memorialRepository.existsByDeceasedPersonId(id)) {
+            throw new ApiException("Cannot delete deceased person: A memorial is linked to this person", HttpStatus.BAD_REQUEST);
+        }
+
+        if (relationshipRepository.existsByDeceasedPersonId(id)) {
+            throw new ApiException("Cannot delete deceased person: Active relationships are linked to this person", HttpStatus.BAD_REQUEST);
+        }
+
+        deceasedPersonRepository.delete(person);
+        return ApiResponse.success("Deceased person record deleted successfully", null);
     }
 }

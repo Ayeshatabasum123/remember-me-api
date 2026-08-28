@@ -6,4 +6,5 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface MemorialRepository extends JpaRepository<Memorial, Long> {
+    boolean existsByDeceasedPersonId(Long deceasedPersonId);
 }
