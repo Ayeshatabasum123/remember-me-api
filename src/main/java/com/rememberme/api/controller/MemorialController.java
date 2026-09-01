@@ -6,6 +6,8 @@ import com.rememberme.api.dto.response.RecentMemorialDto;
 import com.rememberme.api.entity.Memorial;
 import com.rememberme.api.repository.MemorialRepository;
 import com.rememberme.api.service.MemorialService;
+import com.rememberme.api.dto.response.RecentMemorialsResponseDto;
+import com.rememberme.api.exception.InvalidPaginationException;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
@@ -50,6 +52,18 @@ public class MemorialController {
         return ApiResponse.success(memorialRepository.save(memorial));
     }
 
+    @GetMapping("/api/memorials/recent")
+    @Operation(summary = "Get recent memorials/tributes summary", description = "Retrieve latest memorial records sorted by creation date descending with pagination")
+    public ApiResponse<RecentMemorialsResponseDto> getRecentMemorialSummaries(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int limit) {
+        if (page < 0 || limit < 1 || limit > 50) {
+            throw new InvalidPaginationException("Page index must be non-negative and limit must be between 1 and 50");
+        }
+        PageRequest pageRequest = PageRequest.of(page, limit, Sort.by("createdAt").descending());
+        return ApiResponse.success(memorialService.getRecentMemorialSummaries(pageRequest));
+    }
+
     @GetMapping("/api/v1/memorials/recent")
     @Operation(summary = "Get recent memorials", description = "Retrieve a paginated list of recent memorials, sorted by creation date descending")
     public ApiResponse<PaginatedResponse<RecentMemorialDto>> getRecentMemorials(
@@ -60,3 +74,4 @@ public class MemorialController {
         return ApiResponse.success(memorialService.getRecentMemorials(pageRequest));
     }
 }
+
