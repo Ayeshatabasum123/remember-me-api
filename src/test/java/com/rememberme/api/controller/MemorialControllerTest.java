@@ -3,6 +3,7 @@ package com.rememberme.api.controller;
 import com.rememberme.api.entity.DeceasedPerson;
 import com.rememberme.api.entity.Memorial;
 import com.rememberme.api.repository.MemorialRepository;
+import com.rememberme.api.service.MemorialService;
 import com.rememberme.api.security.CustomUserDetailsService;
 import com.rememberme.api.security.JwtUtil;
 import org.junit.jupiter.api.Test;
@@ -31,10 +32,50 @@ public class MemorialControllerTest {
     private MemorialRepository memorialRepository;
 
     @MockBean
+    private MemorialService memorialService;
+
+    @MockBean
     private JwtUtil jwtUtil;
 
     @MockBean
     private CustomUserDetailsService userDetailsService;
+
+    @Test
+    public void getRecentMemorials_Success() throws Exception {
+        com.rememberme.api.dto.response.RecentMemorialDto dto = com.rememberme.api.dto.response.RecentMemorialDto.builder()
+                .memorialId(1L)
+                .name("John Doe")
+                .biography("Test biography")
+                .hasMoreBio(false)
+                .build();
+
+        com.rememberme.api.dto.response.PaginatedResponse<com.rememberme.api.dto.response.RecentMemorialDto> response =
+                com.rememberme.api.dto.response.PaginatedResponse.<com.rememberme.api.dto.response.RecentMemorialDto>builder()
+                        .content(java.util.List.of(dto))
+                        .pagination(com.rememberme.api.dto.response.PaginatedResponse.PaginationMetadata.builder()
+                                .page(0)
+                                .size(10)
+                                .totalElements(1)
+                                .totalPages(1)
+                                .hasNext(false)
+                                .build())
+                        .build();
+
+        when(memorialService.getRecentMemorials(org.springframework.data.domain.PageRequest.of(0, 10, org.springframework.data.domain.Sort.by("createdAt").descending())))
+                .thenReturn(response);
+
+        mockMvc.perform(get("/api/v1/memorials/recent")
+                        .param("page", "0")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.content[0].memorialId").value(1))
+                .andExpect(jsonPath("$.data.content[0].name").value("John Doe"))
+                .andExpect(jsonPath("$.data.content[0].biography").value("Test biography"))
+                .andExpect(jsonPath("$.data.pagination.page").value(0))
+                .andExpect(jsonPath("$.data.pagination.size").value(10))
+                .andExpect(jsonPath("$.data.pagination.totalElements").value(1));
+    }
 
     @Test
     public void getMemorialByDeceasedPersonId_Success() throws Exception {

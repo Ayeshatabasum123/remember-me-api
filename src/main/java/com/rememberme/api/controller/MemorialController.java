@@ -1,10 +1,15 @@
 package com.rememberme.api.controller;
 
 import com.rememberme.api.dto.response.ApiResponse;
+import com.rememberme.api.dto.response.PaginatedResponse;
+import com.rememberme.api.dto.response.RecentMemorialDto;
 import com.rememberme.api.entity.Memorial;
 import com.rememberme.api.repository.MemorialRepository;
+import com.rememberme.api.service.MemorialService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.*;
 
 import com.rememberme.api.exception.ApiException;
@@ -12,24 +17,24 @@ import org.springframework.http.HttpStatus;
 import io.swagger.v3.oas.annotations.Operation;
 
 @RestController
-@RequestMapping("/api/memorials")
 @RequiredArgsConstructor
 @Tag(name = "Memorial", description = "Biography, prayers/messages, photos and memories")
 public class MemorialController {
 
     private final MemorialRepository memorialRepository;
+    private final MemorialService memorialService;
 
-    @PostMapping
+    @PostMapping("/api/memorials")
     public ApiResponse<Memorial> createMemorial(@RequestBody Memorial memorial) {
         return ApiResponse.success(memorialRepository.save(memorial));
     }
 
-    @GetMapping("/{id}")
+    @GetMapping("/api/memorials/{id}")
     public ApiResponse<Memorial> getMemorial(@PathVariable Long id) {
         return ApiResponse.success(memorialRepository.findById(id).orElseThrow());
     }
 
-    @GetMapping("/deceased/{deceasedPersonId}")
+    @GetMapping("/api/memorials/deceased/{deceasedPersonId}")
     @Operation(summary = "Get memorial by deceased person ID", description = "Retrieve the memorial associated with a specific deceased person ID")
     public ApiResponse<Memorial> getMemorialByDeceasedPersonId(@PathVariable Long deceasedPersonId) {
         Memorial memorial = memorialRepository.findByDeceasedPersonId(deceasedPersonId)
@@ -37,11 +42,21 @@ public class MemorialController {
         return ApiResponse.success(memorial);
     }
 
-    @PutMapping("/{id}")
+    @PutMapping("/api/memorials/{id}")
     public ApiResponse<Memorial> updateMemorial(@PathVariable Long id, @RequestBody Memorial updated) {
         Memorial memorial = memorialRepository.findById(id).orElseThrow();
         memorial.setBiography(updated.getBiography());
         memorial.setPrayerOrMessage(updated.getPrayerOrMessage());
         return ApiResponse.success(memorialRepository.save(memorial));
+    }
+
+    @GetMapping("/api/v1/memorials/recent")
+    @Operation(summary = "Get recent memorials", description = "Retrieve a paginated list of recent memorials, sorted by creation date descending")
+    public ApiResponse<PaginatedResponse<RecentMemorialDto>> getRecentMemorials(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        int cappedSize = Math.min(size, 50);
+        PageRequest pageRequest = PageRequest.of(page, cappedSize, Sort.by("createdAt").descending());
+        return ApiResponse.success(memorialService.getRecentMemorials(pageRequest));
     }
 }
