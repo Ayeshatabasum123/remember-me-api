@@ -22,6 +22,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.rememberme.api.repository.DeceasedPersonRepository;
+
 @WebMvcTest(MemorialController.class)
 @AutoConfigureMockMvc(addFilters = false)
 public class MemorialControllerTest {
@@ -34,6 +36,9 @@ public class MemorialControllerTest {
 
     @MockBean
     private MemorialService memorialService;
+
+    @MockBean
+    private DeceasedPersonRepository deceasedPersonRepository;
 
     @MockBean
     private JwtUtil jwtUtil;
@@ -177,5 +182,123 @@ public class MemorialControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.message").value("Parameter 'deceasedPersonId' is of invalid format/type"));
+    }
+
+    @Test
+    public void deserializeMemorial_Success() throws Exception {
+        String json = "{\n" +
+                "  \"id\": 14,\n" +
+                "  \"deceasedPerson\": {\n" +
+                "    \"id\": 14,\n" +
+                "    \"fullName\": \"Mahatma Gandhi\",\n" +
+                "    \"dateOfBirth\": \"1869-10-02\",\n" +
+                "    \"dateOfDeath\": \"1948-01-30\",\n" +
+                "    \"gender\": \"MALE\",\n" +
+                "    \"photoUrl\": \"https://live.staticflickr.com/84/255569844_3760184197_o.jpg\",\n" +
+                "    \"grave\": {\n" +
+                "      \"id\": 14,\n" +
+                "      \"rememberMe\": {\n" +
+                "        \"id\": 18\n" +
+                "      },\n" +
+                "      \"graveNumber\": \"N/A\",\n" +
+                "      \"section\": \"N/A\",\n" +
+                "      \"row\": \"N/A\",\n" +
+                "      \"latitude\": 28.6406607,\n" +
+                "      \"longitude\": 77.249518,\n" +
+                "      \"locationAccuracy\": null,\n" +
+                "      \"verificationStatus\": \"UNVERIFIED\"\n" +
+                "    }\n" +
+                "  },\n" +
+                "  \"biography\": \"Mahatma Gandhi...\",\n" +
+                "  \"prayerOrMessage\": \"May the legacy...\"\n" +
+                "}";
+
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        mapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+        Memorial memorial = mapper.readValue(json, Memorial.class);
+        org.junit.jupiter.api.Assertions.assertNotNull(memorial);
+        org.junit.jupiter.api.Assertions.assertNotNull(memorial.getDeceasedPerson());
+        org.junit.jupiter.api.Assertions.assertNotNull(memorial.getDeceasedPerson().getGrave());
+        org.junit.jupiter.api.Assertions.assertNotNull(memorial.getDeceasedPerson().getGrave().getRememberMe());
+    }
+
+    @Test
+    public void postMemorial_MockMvc_Success() throws Exception {
+        String json = "{\n" +
+                "  \"id\": 14,\n" +
+                "  \"deceasedPerson\": {\n" +
+                "    \"id\": 14,\n" +
+                "    \"fullName\": \"Mahatma Gandhi\",\n" +
+                "    \"dateOfBirth\": \"1869-10-02\",\n" +
+                "    \"dateOfDeath\": \"1948-01-30\",\n" +
+                "    \"gender\": \"MALE\",\n" +
+                "    \"photoUrl\": \"https://live.staticflickr.com/84/255569844_3760184197_o.jpg\",\n" +
+                "    \"grave\": {\n" +
+                "      \"id\": 14,\n" +
+                "      \"rememberMe\": {\n" +
+                "        \"id\": 18\n" +
+                "      },\n" +
+                "      \"graveNumber\": \"N/A\",\n" +
+                "      \"section\": \"N/A\",\n" +
+                "      \"row\": \"N/A\",\n" +
+                "      \"latitude\": 28.6406607,\n" +
+                "      \"longitude\": 77.249518,\n" +
+                "      \"locationAccuracy\": null,\n" +
+                "      \"verificationStatus\": \"UNVERIFIED\"\n" +
+                "    }\n" +
+                "  },\n" +
+                "  \"biography\": \"Mahatma Gandhi...\",\n" +
+                "  \"prayerOrMessage\": \"May the legacy...\"\n" +
+                "}";
+
+        when(memorialRepository.save(org.mockito.ArgumentMatchers.any(Memorial.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/memorials")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    public void putMemorial_MockMvc_Success() throws Exception {
+        String json = "{\n" +
+                "  \"id\": 14,\n" +
+                "  \"deceasedPerson\": {\n" +
+                "    \"id\": 14,\n" +
+                "    \"fullName\": \"Mahatma Gandhi\",\n" +
+                "    \"dateOfBirth\": \"1869-10-02\",\n" +
+                "    \"dateOfDeath\": \"1948-01-30\",\n" +
+                "    \"gender\": \"MALE\",\n" +
+                "    \"photoUrl\": \"https://live.staticflickr.com/84/255569844_3760184197_o.jpg\",\n" +
+                "    \"grave\": {\n" +
+                "      \"id\": 14,\n" +
+                "      \"rememberMe\": {\n" +
+                "        \"id\": 18\n" +
+                "      },\n" +
+                "      \"graveNumber\": \"N/A\",\n" +
+                "      \"section\": \"N/A\",\n" +
+                "      \"row\": \"N/A\",\n" +
+                "      \"latitude\": 28.6406607,\n" +
+                "      \"longitude\": 77.249518,\n" +
+                "      \"locationAccuracy\": null,\n" +
+                "      \"verificationStatus\": \"UNVERIFIED\"\n" +
+                "    }\n" +
+                "  },\n" +
+                "  \"biography\": \"Mahatma Gandhi...\",\n" +
+                "  \"prayerOrMessage\": \"May the legacy...\"\n" +
+                "}";
+
+        Memorial memorial = Memorial.builder().id(14L).biography("Old").prayerOrMessage("Old").build();
+        when(memorialRepository.findById(14L)).thenReturn(Optional.of(memorial));
+        when(memorialRepository.save(org.mockito.ArgumentMatchers.any(Memorial.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/memorials/{id}", 14L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
     }
 }

@@ -18,6 +18,11 @@ import com.rememberme.api.exception.ApiException;
 import org.springframework.http.HttpStatus;
 import io.swagger.v3.oas.annotations.Operation;
 
+import com.rememberme.api.entity.DeceasedPerson;
+import com.rememberme.api.repository.DeceasedPersonRepository;
+
+import java.time.LocalDateTime;
+
 @RestController
 @RequiredArgsConstructor
 @Tag(name = "Memorial", description = "Biography, prayers/messages, photos and memories")
@@ -25,15 +30,26 @@ public class MemorialController {
 
     private final MemorialRepository memorialRepository;
     private final MemorialService memorialService;
+    private final DeceasedPersonRepository deceasedPersonRepository;
 
     @PostMapping("/api/memorials")
     public ApiResponse<Memorial> createMemorial(@RequestBody Memorial memorial) {
+        if (memorial.getDeceasedPerson() != null && memorial.getDeceasedPerson().getId() != null) {
+            DeceasedPerson deceased = deceasedPersonRepository.findById(memorial.getDeceasedPerson().getId())
+                    .orElse(memorial.getDeceasedPerson());
+            memorial.setDeceasedPerson(deceased);
+        }
+        if (memorial.getCreatedAt() == null) {
+            memorial.setCreatedAt(LocalDateTime.now());
+        }
+        memorial.setUpdatedAt(LocalDateTime.now());
         return ApiResponse.success(memorialRepository.save(memorial));
     }
 
     @GetMapping("/api/memorials/{id}")
     public ApiResponse<Memorial> getMemorial(@PathVariable Long id) {
-        return ApiResponse.success(memorialRepository.findById(id).orElseThrow());
+        return ApiResponse.success(memorialRepository.findById(id)
+                .orElseThrow(() -> new ApiException("Memorial not found with ID: " + id, HttpStatus.NOT_FOUND)));
     }
 
     @GetMapping("/api/memorials/deceased/{deceasedPersonId}")
@@ -46,9 +62,21 @@ public class MemorialController {
 
     @PutMapping("/api/memorials/{id}")
     public ApiResponse<Memorial> updateMemorial(@PathVariable Long id, @RequestBody Memorial updated) {
-        Memorial memorial = memorialRepository.findById(id).orElseThrow();
-        memorial.setBiography(updated.getBiography());
-        memorial.setPrayerOrMessage(updated.getPrayerOrMessage());
+        Memorial memorial = memorialRepository.findById(id)
+                .orElseThrow(() -> new ApiException("Memorial not found with ID: " + id, HttpStatus.NOT_FOUND));
+
+        if (updated.getBiography() != null) {
+            memorial.setBiography(updated.getBiography());
+        }
+        if (updated.getPrayerOrMessage() != null) {
+            memorial.setPrayerOrMessage(updated.getPrayerOrMessage());
+        }
+        if (updated.getDeceasedPerson() != null && updated.getDeceasedPerson().getId() != null) {
+            DeceasedPerson deceased = deceasedPersonRepository.findById(updated.getDeceasedPerson().getId())
+                    .orElse(updated.getDeceasedPerson());
+            memorial.setDeceasedPerson(deceased);
+        }
+        memorial.setUpdatedAt(LocalDateTime.now());
         return ApiResponse.success(memorialRepository.save(memorial));
     }
 
