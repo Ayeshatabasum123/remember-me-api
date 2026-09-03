@@ -10,4 +10,5 @@ import java.util.Optional;
 public interface MemorialRepository extends JpaRepository<Memorial, Long> {
     boolean existsByDeceasedPersonId(Long deceasedPersonId);
     Optional<Memorial> findByDeceasedPersonId(Long deceasedPersonId);
+    void deleteByDeceasedPersonId(Long deceasedPersonId);
 }

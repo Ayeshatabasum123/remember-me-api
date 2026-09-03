@@ -14,6 +14,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
+import org.springframework.transaction.annotation.Transactional;
+
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -58,17 +60,13 @@ public class DeceasedPersonController {
     }
 
     @DeleteMapping("/{id}")
+    @Transactional
     public ApiResponse<Void> deleteDeceasedPerson(@PathVariable Long id) {
         DeceasedPerson person = deceasedPersonRepository.findById(id)
                 .orElseThrow(() -> new ApiException("Deceased person not found with ID: " + id, HttpStatus.NOT_FOUND));
 
-        if (memorialRepository.existsByDeceasedPersonId(id)) {
-            throw new ApiException("Cannot delete deceased person: A memorial is linked to this person", HttpStatus.BAD_REQUEST);
-        }
-
-        if (relationshipRepository.existsByDeceasedPersonId(id)) {
-            throw new ApiException("Cannot delete deceased person: Active relationships are linked to this person", HttpStatus.BAD_REQUEST);
-        }
+        memorialRepository.deleteByDeceasedPersonId(id);
+        relationshipRepository.deleteByDeceasedPersonId(id);
 
         deceasedPersonRepository.delete(person);
         return ApiResponse.success("Deceased person record deleted successfully", null);

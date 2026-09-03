@@ -55,14 +55,18 @@ public class DeceasedPersonControllerTest {
         person.setId(1L);
 
         when(deceasedPersonRepository.findById(1L)).thenReturn(Optional.of(person));
-        when(memorialRepository.existsByDeceasedPersonId(1L)).thenReturn(false);
-        when(relationshipRepository.existsByDeceasedPersonId(1L)).thenReturn(false);
+        doNothing().when(memorialRepository).deleteByDeceasedPersonId(1L);
+        doNothing().when(relationshipRepository).deleteByDeceasedPersonId(1L);
         doNothing().when(deceasedPersonRepository).delete(person);
 
         mockMvc.perform(delete("/api/deceased/{id}", 1L))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.message").value("Deceased person record deleted successfully"));
+
+        verify(memorialRepository).deleteByDeceasedPersonId(1L);
+        verify(relationshipRepository).deleteByDeceasedPersonId(1L);
+        verify(deceasedPersonRepository).delete(person);
     }
 
     @Test
@@ -75,29 +79,22 @@ public class DeceasedPersonControllerTest {
     }
 
     @Test
-    public void deleteDeceasedPerson_Conflict_HasMemorial() throws Exception {
+    public void deleteDeceasedPerson_Success_WithAssociatedMemorialAndRelationships() throws Exception {
         DeceasedPerson person = new DeceasedPerson();
-        person.setId(1L);
+        person.setId(2L);
 
-        when(deceasedPersonRepository.findById(1L)).thenReturn(Optional.of(person));
-        when(memorialRepository.existsByDeceasedPersonId(1L)).thenReturn(true);
+        when(deceasedPersonRepository.findById(2L)).thenReturn(Optional.of(person));
+        doNothing().when(memorialRepository).deleteByDeceasedPersonId(2L);
+        doNothing().when(relationshipRepository).deleteByDeceasedPersonId(2L);
+        doNothing().when(deceasedPersonRepository).delete(person);
 
-        mockMvc.perform(delete("/api/deceased/{id}", 1L))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Cannot delete deceased person: A memorial is linked to this person"));
-    }
+        mockMvc.perform(delete("/api/deceased/{id}", 2L))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Deceased person record deleted successfully"));
 
-    @Test
-    public void deleteDeceasedPerson_Conflict_HasRelationship() throws Exception {
-        DeceasedPerson person = new DeceasedPerson();
-        person.setId(1L);
-
-        when(deceasedPersonRepository.findById(1L)).thenReturn(Optional.of(person));
-        when(memorialRepository.existsByDeceasedPersonId(1L)).thenReturn(false);
-        when(relationshipRepository.existsByDeceasedPersonId(1L)).thenReturn(true);
-
-        mockMvc.perform(delete("/api/deceased/{id}", 1L))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Cannot delete deceased person: Active relationships are linked to this person"));
+        verify(memorialRepository).deleteByDeceasedPersonId(2L);
+        verify(relationshipRepository).deleteByDeceasedPersonId(2L);
+        verify(deceasedPersonRepository).delete(person);
     }
 }
