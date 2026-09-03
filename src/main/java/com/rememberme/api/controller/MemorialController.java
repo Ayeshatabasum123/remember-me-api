@@ -52,7 +52,7 @@ public class MemorialController {
         return ApiResponse.success(memorialRepository.save(memorial));
     }
 
-    @GetMapping("/api/memorials/recent")
+    @GetMapping({"/api/v1/memorials/recent/summary", "/api/memorials/recent"})
     @Operation(summary = "Get recent memorials/tributes summary", description = "Retrieve latest memorial records sorted by creation date descending with pagination")
     public ApiResponse<RecentMemorialsResponseDto> getRecentMemorialSummaries(
             @RequestParam(defaultValue = "0") int page,
@@ -64,14 +64,11 @@ public class MemorialController {
         return ApiResponse.success(memorialService.getRecentMemorialSummaries(pageRequest));
     }
 
-    @GetMapping("/api/v1/memorials/recent")
-    @Operation(summary = "Get recent memorials", description = "Retrieve a paginated list of recent memorials, sorted by creation date descending")
-    public ApiResponse<PaginatedResponse<RecentMemorialDto>> getRecentMemorials(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
-        int cappedSize = Math.min(size, 50);
-        PageRequest pageRequest = PageRequest.of(page, cappedSize, Sort.by("createdAt").descending());
-        return ApiResponse.success(memorialService.getRecentMemorials(pageRequest));
+    @DeleteMapping("/api/memorials/{id}")
+    @Operation(summary = "Delete memorial", description = "Delete a memorial by ID")
+    public ApiResponse<Void> deleteMemorial(@PathVariable Long id) {
+        memorialService.deleteMemorial(id);
+        return ApiResponse.success("Memorial deleted successfully", null);
     }
 }
 

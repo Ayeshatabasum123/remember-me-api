@@ -20,7 +20,10 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import com.rememberme.api.exception.ApiException;
+import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -68,6 +71,23 @@ public class MemorialServiceTest {
                 .prayerOrMessage("In loving memory of Arthur.")
                 .createdAt(LocalDateTime.of(2026, 8, 29, 14, 30))
                 .build();
+    }
+
+    @Test
+    public void deleteMemorial_Success() {
+        when(memorialRepository.findById(1L)).thenReturn(Optional.of(memorial1));
+
+        memorialService.deleteMemorial(1L);
+
+        verify(memorialRepository).delete(memorial1);
+    }
+
+    @Test
+    public void deleteMemorial_NotFound() {
+        when(memorialRepository.findById(999L)).thenReturn(Optional.empty());
+
+        ApiException exception = assertThrows(ApiException.class, () -> memorialService.deleteMemorial(999L));
+        assertEquals("Memorial not found with ID: 999", exception.getMessage());
     }
 
     @Test

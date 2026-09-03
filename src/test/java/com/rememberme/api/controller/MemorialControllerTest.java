@@ -17,6 +17,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.Optional;
 
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -41,40 +42,24 @@ public class MemorialControllerTest {
     private CustomUserDetailsService userDetailsService;
 
     @Test
-    public void getRecentMemorials_Success() throws Exception {
-        com.rememberme.api.dto.response.RecentMemorialDto dto = com.rememberme.api.dto.response.RecentMemorialDto.builder()
-                .memorialId(1L)
-                .name("John Doe")
-                .biography("Test biography")
-                .hasMoreBio(false)
-                .build();
+    public void deleteMemorial_Success() throws Exception {
+        org.mockito.Mockito.doNothing().when(memorialService).deleteMemorial(1L);
 
-        com.rememberme.api.dto.response.PaginatedResponse<com.rememberme.api.dto.response.RecentMemorialDto> response =
-                com.rememberme.api.dto.response.PaginatedResponse.<com.rememberme.api.dto.response.RecentMemorialDto>builder()
-                        .content(java.util.List.of(dto))
-                        .pagination(com.rememberme.api.dto.response.PaginatedResponse.PaginationMetadata.builder()
-                                .page(0)
-                                .size(10)
-                                .totalElements(1)
-                                .totalPages(1)
-                                .hasNext(false)
-                                .build())
-                        .build();
-
-        when(memorialService.getRecentMemorials(org.springframework.data.domain.PageRequest.of(0, 10, org.springframework.data.domain.Sort.by("createdAt").descending())))
-                .thenReturn(response);
-
-        mockMvc.perform(get("/api/v1/memorials/recent")
-                        .param("page", "0")
-                        .param("size", "10"))
+        mockMvc.perform(delete("/api/memorials/{id}", 1L))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.content[0].memorialId").value(1))
-                .andExpect(jsonPath("$.data.content[0].name").value("John Doe"))
-                .andExpect(jsonPath("$.data.content[0].biography").value("Test biography"))
-                .andExpect(jsonPath("$.data.pagination.page").value(0))
-                .andExpect(jsonPath("$.data.pagination.size").value(10))
-                .andExpect(jsonPath("$.data.pagination.totalElements").value(1));
+                .andExpect(jsonPath("$.message").value("Memorial deleted successfully"));
+    }
+
+    @Test
+    public void deleteMemorial_NotFound() throws Exception {
+        org.mockito.Mockito.doThrow(new com.rememberme.api.exception.ApiException("Memorial not found with ID: 999", org.springframework.http.HttpStatus.NOT_FOUND))
+                .when(memorialService).deleteMemorial(999L);
+
+        mockMvc.perform(delete("/api/memorials/{id}", 999L))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.message").value("Memorial not found with ID: 999"));
     }
 
     @Test

@@ -21,6 +21,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.rememberme.api.security.CustomUserDetailsService;
+import com.rememberme.api.security.JwtUtil;
+
 @WebMvcTest(RememberMeController.class)
 @AutoConfigureMockMvc(addFilters = false)
 public class RememberMeControllerTest {
@@ -33,6 +36,12 @@ public class RememberMeControllerTest {
 
     @MockBean
     private GraveRepository graveRepository;
+
+    @MockBean
+    private JwtUtil jwtUtil;
+
+    @MockBean
+    private CustomUserDetailsService userDetailsService;
 
     @Test
     public void deleteGraveyard_Success() throws Exception {

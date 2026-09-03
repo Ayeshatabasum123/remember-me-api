@@ -20,6 +20,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.rememberme.api.security.CustomUserDetailsService;
+import com.rememberme.api.security.JwtUtil;
+
 @WebMvcTest(AuthController.class)
 @AutoConfigureMockMvc(addFilters = false) // Disable spring security filters for controller testing simplicity
 public class AuthControllerTest {
@@ -32,6 +35,12 @@ public class AuthControllerTest {
 
     @MockBean
     private AuthService authService;
+
+    @MockBean
+    private JwtUtil jwtUtil;
+
+    @MockBean
+    private CustomUserDetailsService userDetailsService;
 
     @Test
     public void logout_Success() throws Exception {

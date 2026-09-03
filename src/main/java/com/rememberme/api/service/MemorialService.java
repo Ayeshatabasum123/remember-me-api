@@ -10,6 +10,8 @@ import com.rememberme.api.repository.MemorialRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import com.rememberme.api.exception.ApiException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -20,6 +22,12 @@ import java.util.stream.Collectors;
 public class MemorialService {
 
     private final MemorialRepository memorialRepository;
+
+    public void deleteMemorial(Long id) {
+        Memorial memorial = memorialRepository.findById(id)
+                .orElseThrow(() -> new ApiException("Memorial not found with ID: " + id, HttpStatus.NOT_FOUND));
+        memorialRepository.delete(memorial);
+    }
 
     public RecentMemorialsResponseDto getRecentMemorialSummaries(Pageable pageable) {
         Page<Memorial> page = memorialRepository.findAll(pageable);
@@ -57,57 +65,6 @@ public class MemorialService {
                 .dateOfBirth(deceased != null ? deceased.getDateOfBirth() : null)
                 .dateOfDeath(deceased != null ? deceased.getDateOfDeath() : null)
                 .biography(bioText)
-                .createdAt(memorial.getCreatedAt())
-                .build();
-    }
-
-    public PaginatedResponse<RecentMemorialDto> getRecentMemorials(Pageable pageable) {
-        Page<Memorial> page = memorialRepository.findAll(pageable);
-
-        List<RecentMemorialDto> content = page.getContent().stream()
-                .map(this::mapToRecentMemorialDto)
-                .collect(Collectors.toList());
-
-        PaginatedResponse.PaginationMetadata metadata = PaginatedResponse.PaginationMetadata.builder()
-                .page(page.getNumber())
-                .size(page.getSize())
-                .totalElements(page.getTotalElements())
-                .totalPages(page.getTotalPages())
-                .hasNext(page.hasNext())
-                .build();
-
-        return PaginatedResponse.<RecentMemorialDto>builder()
-                .content(content)
-                .pagination(metadata)
-                .build();
-    }
-
-    private RecentMemorialDto mapToRecentMemorialDto(Memorial memorial) {
-        DeceasedPerson deceased = memorial.getDeceasedPerson();
-        
-        String bioText = memorial.getBiography();
-        if (bioText == null || bioText.trim().isEmpty()) {
-            bioText = memorial.getPrayerOrMessage();
-        }
-        if (bioText == null) {
-            bioText = "";
-        }
-
-        String truncatedBio = bioText;
-        boolean hasMoreBio = false;
-        if (bioText.length() > 150) {
-            truncatedBio = bioText.substring(0, 150);
-            hasMoreBio = true;
-        }
-
-        return RecentMemorialDto.builder()
-                .memorialId(memorial.getId())
-                .name(deceased != null ? deceased.getFullName() : null)
-                .photoUrl(deceased != null ? deceased.getPhotoUrl() : null)
-                .dateOfBirth(deceased != null ? deceased.getDateOfBirth() : null)
-                .dateOfDeath(deceased != null ? deceased.getDateOfDeath() : null)
-                .biography(truncatedBio)
-                .hasMoreBio(hasMoreBio)
                 .createdAt(memorial.getCreatedAt())
                 .build();
     }

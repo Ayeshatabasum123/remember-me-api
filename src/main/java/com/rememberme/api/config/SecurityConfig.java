@@ -28,7 +28,6 @@ public class SecurityConfig {
         "/api/auth/**",
         "/api/graveyards/search/**",
         "/api/search/**",
-        "/api/v1/memorials/recent",
         "/swagger-ui.html",
         "/swagger-ui/**",
         "/api-docs/**",

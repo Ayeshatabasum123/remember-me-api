@@ -21,6 +21,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.rememberme.api.security.CustomUserDetailsService;
+import com.rememberme.api.security.JwtUtil;
+
 @WebMvcTest(DeceasedPersonController.class)
 @AutoConfigureMockMvc(addFilters = false)
 public class DeceasedPersonControllerTest {
@@ -39,6 +42,12 @@ public class DeceasedPersonControllerTest {
 
     @MockBean
     private RelationshipRepository relationshipRepository;
+
+    @MockBean
+    private JwtUtil jwtUtil;
+
+    @MockBean
+    private CustomUserDetailsService userDetailsService;
 
     @Test
     public void deleteDeceasedPerson_Success() throws Exception {
