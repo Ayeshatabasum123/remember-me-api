@@ -35,6 +35,6 @@ public class Photo {
     private LocalDateTime createdAt;
 
     public enum OwnerType {
-        GRAVE, DECEASED_PERSON, MEMORIAL, GRAVEYARD, USER_PROFILE
+        GRAVE, MEMORIAL
     }
 }
