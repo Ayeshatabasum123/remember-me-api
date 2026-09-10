@@ -6,11 +6,14 @@ import com.rememberme.api.exception.ApiException;
 import com.rememberme.api.repository.GraveRepository;
 import com.rememberme.api.repository.MemorialRepository;
 import com.rememberme.api.repository.PhotoRepository;
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/media")
@@ -56,5 +59,33 @@ public class MediaController {
 
         return ApiResponse.success(photoRepository.save(photo));
     }
+
+    @GetMapping
+    @Operation(summary = "Get media photos by owner type and owner ID")
+    public ApiResponse<List<Photo>> getPhotos(@RequestParam String ownerType,
+                                               @RequestParam Long ownerId) {
+        Photo.OwnerType type;
+        try {
+            type = Photo.OwnerType.valueOf(ownerType);
+        } catch (IllegalArgumentException | NullPointerException e) {
+            throw new ApiException("Invalid ownerType: " + ownerType + ". Valid values are: GRAVE, MEMORIAL", HttpStatus.BAD_REQUEST);
+        }
+
+        if (type == Photo.OwnerType.GRAVE) {
+            if (!graveRepository.existsById(ownerId)) {
+                throw new ApiException("Grave with ID " + ownerId + " not found", HttpStatus.NOT_FOUND);
+            }
+        } else if (type == Photo.OwnerType.MEMORIAL) {
+            if (!memorialRepository.existsById(ownerId)) {
+                throw new ApiException("Memorial with ID " + ownerId + " not found", HttpStatus.NOT_FOUND);
+            }
+        } else {
+            throw new ApiException("Invalid ownerType: " + ownerType + ". Valid values are: GRAVE, MEMORIAL", HttpStatus.BAD_REQUEST);
+        }
+
+        List<Photo> photos = photoRepository.findByOwnerTypeAndOwnerId(type, ownerId);
+        return ApiResponse.success(photos);
+    }
 }
+
 

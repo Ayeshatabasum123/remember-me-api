@@ -14,8 +14,11 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.List;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -142,4 +145,75 @@ public class MediaControllerTest {
 
         verify(photoRepository, never()).save(any(Photo.class));
     }
+
+    @Test
+    public void getPhotos_Grave_ValidId() throws Exception {
+        when(graveRepository.existsById(14L)).thenReturn(true);
+        Photo photo = Photo.builder()
+                .id(1L)
+                .url("https://your-bucket.s3.amazonaws.com/grave14.jpg")
+                .ownerType(Photo.OwnerType.GRAVE)
+                .ownerId(14L)
+                .build();
+        when(photoRepository.findByOwnerTypeAndOwnerId(Photo.OwnerType.GRAVE, 14L)).thenReturn(List.of(photo));
+
+        mockMvc.perform(get("/api/media")
+                        .param("ownerType", "GRAVE")
+                        .param("ownerId", "14"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data[0].id").value(1))
+                .andExpect(jsonPath("$.data[0].ownerType").value("GRAVE"))
+                .andExpect(jsonPath("$.data[0].ownerId").value(14));
+    }
+
+    @Test
+    public void getPhotos_Memorial_ValidId() throws Exception {
+        when(memorialRepository.existsById(18L)).thenReturn(true);
+        Photo photo1 = Photo.builder()
+                .id(10L)
+                .url("https://your-bucket.s3.amazonaws.com/mem18_1.jpg")
+                .ownerType(Photo.OwnerType.MEMORIAL)
+                .ownerId(18L)
+                .build();
+        Photo photo2 = Photo.builder()
+                .id(11L)
+                .url("https://your-bucket.s3.amazonaws.com/mem18_2.jpg")
+                .ownerType(Photo.OwnerType.MEMORIAL)
+                .ownerId(18L)
+                .build();
+        when(photoRepository.findByOwnerTypeAndOwnerId(Photo.OwnerType.MEMORIAL, 18L)).thenReturn(List.of(photo1, photo2));
+
+        mockMvc.perform(get("/api/media")
+                        .param("ownerType", "MEMORIAL")
+                        .param("ownerId", "18"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].id").value(10))
+                .andExpect(jsonPath("$.data[1].id").value(11));
+    }
+
+    @Test
+    public void getPhotos_OwnerNotFound() throws Exception {
+        when(graveRepository.existsById(999L)).thenReturn(false);
+
+        mockMvc.perform(get("/api/media")
+                        .param("ownerType", "GRAVE")
+                        .param("ownerId", "999"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.message").value("Grave with ID 999 not found"));
+    }
+
+    @Test
+    public void getPhotos_InvalidOwnerType() throws Exception {
+        mockMvc.perform(get("/api/media")
+                        .param("ownerType", "INVALID")
+                        .param("ownerId", "10"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value("Invalid ownerType: INVALID. Valid values are: GRAVE, MEMORIAL"));
+    }
 }
+
