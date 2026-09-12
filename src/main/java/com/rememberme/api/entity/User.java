@@ -36,6 +36,7 @@ public class User {
     private String country;
 
     @Enumerated(EnumType.STRING)
+    @org.hibernate.annotations.Check(constraints = "role IN ('USER', 'ADMIN', 'GRAVEYARD_ADMIN', 'SUPER_ADMIN')")
     private Role role;
 
     private boolean emailVerified;
