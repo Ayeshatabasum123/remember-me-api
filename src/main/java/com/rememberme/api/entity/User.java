@@ -46,6 +46,6 @@ public class User {
     private LocalDateTime updatedAt;
 
     public enum Role {
-        USER, GRAVEYARD_ADMIN, SUPER_ADMIN
+        USER, ADMIN, GRAVEYARD_ADMIN, SUPER_ADMIN
     }
 }

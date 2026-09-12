@@ -7,10 +7,12 @@ import com.rememberme.api.repository.RememberMeRepository;
 import com.rememberme.api.repository.ReportRepository;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/admin")
+@PreAuthorize("hasAnyRole('ADMIN', 'GRAVEYARD_ADMIN', 'SUPER_ADMIN')")
 @RequiredArgsConstructor
 @Tag(name = "Admin", description = "Approve/edit/remove rememberMes and duplicate entries")
 public class AdminController {
