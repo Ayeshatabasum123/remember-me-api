@@ -35,6 +35,9 @@ public class User {
 
     private String country;
 
+    @Column(name = "fcm_token")
+    private String fcmToken;
+
     @Enumerated(EnumType.STRING)
     @org.hibernate.annotations.Check(constraints = "role IN ('USER', 'ADMIN', 'GRAVEYARD_ADMIN', 'SUPER_ADMIN')")
     private Role role;
