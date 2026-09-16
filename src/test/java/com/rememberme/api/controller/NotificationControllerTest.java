@@ -7,6 +7,8 @@ import com.rememberme.api.security.CustomUserDetailsService;
 import com.rememberme.api.security.JwtAuthFilter;
 import com.rememberme.api.security.JwtUtil;
 import com.rememberme.api.service.FirebaseNotificationService;
+import com.rememberme.api.service.FuneralNotificationEngineService;
+import com.rememberme.api.service.NotificationPreferenceService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,6 +44,12 @@ class NotificationControllerTest {
 
     @MockBean
     private FirebaseNotificationService firebaseNotificationService;
+
+    @MockBean
+    private NotificationPreferenceService preferenceService;
+
+    @MockBean
+    private FuneralNotificationEngineService notificationEngineService;
 
     @MockBean
     private JwtUtil jwtUtil;

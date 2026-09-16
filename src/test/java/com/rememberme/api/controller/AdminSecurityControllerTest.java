@@ -56,6 +56,9 @@ public class AdminSecurityControllerTest {
     @MockBean
     private CustomUserDetailsService userDetailsService;
 
+    @MockBean
+    private com.rememberme.api.service.FuneralNotificationEngineService notificationEngineService;
+
     private RememberMe mockRememberMe;
     private Report mockReport;
 

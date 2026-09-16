@@ -43,11 +43,11 @@ public class RememberMe {
     @Enumerated(EnumType.STRING)
     private ApprovalStatus status;
 
-    @Column(nullable = false)
+    @Column(name = "is_famous", nullable = false, columnDefinition = "boolean default false")
     @Builder.Default
     private boolean isFamous = false;
 
-    @Column(nullable = false)
+    @Column(name = "is_historical", nullable = false, columnDefinition = "boolean default false")
     @Builder.Default
     private boolean isHistorical = false;
 

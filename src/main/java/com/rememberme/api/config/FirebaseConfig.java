@@ -21,6 +21,12 @@ public class FirebaseConfig {
     @Value("${firebase.service-account-file:firebase-service-account.json}")
     private String serviceAccountFile;
 
+    private static boolean mockMode = false;
+
+    public static boolean isMockMode() {
+        return mockMode;
+    }
+
     @Bean
     public FirebaseApp firebaseApp() {
         if (!FirebaseApp.getApps().isEmpty()) {
@@ -34,6 +40,7 @@ public class FirebaseConfig {
                         .setCredentials(GoogleCredentials.fromStream(serviceAccountStream))
                         .build();
                 log.info("Initializing FirebaseApp with service account credentials from {}", serviceAccountFile);
+                mockMode = false;
                 return FirebaseApp.initializeApp(options);
             }
         } catch (Exception e) {
@@ -46,11 +53,14 @@ public class FirebaseConfig {
             FirebaseOptions options = FirebaseOptions.builder()
                     .setCredentials(GoogleCredentials.getApplicationDefault())
                     .build();
+            mockMode = false;
             return FirebaseApp.initializeApp(options);
         } catch (Exception e) {
             log.warn("Firebase default credentials not available: {}. Initializing minimal FirebaseApp for development.", e.getMessage());
+            mockMode = true;
             FirebaseOptions options = FirebaseOptions.builder()
                     .setCredentials(new MockGoogleCredentials())
+                    .setProjectId("remember-me-dev")
                     .build();
             return FirebaseApp.initializeApp(options);
         }
