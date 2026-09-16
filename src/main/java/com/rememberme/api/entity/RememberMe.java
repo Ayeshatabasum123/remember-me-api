@@ -43,6 +43,17 @@ public class RememberMe {
     @Enumerated(EnumType.STRING)
     private ApprovalStatus status;
 
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean isFamous = false;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean isHistorical = false;
+
+    @Column(columnDefinition = "TEXT")
+    private String historicalDetails;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 

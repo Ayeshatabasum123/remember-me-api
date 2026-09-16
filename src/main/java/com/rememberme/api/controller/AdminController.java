@@ -40,4 +40,15 @@ public class AdminController {
         report.setStatus(Report.ReportStatus.RESOLVED);
         return ApiResponse.success("Report resolved", reportRepository.save(report));
     }
+
+    @PostMapping("/notifications/broadcast-vip")
+    @io.swagger.v3.oas.annotations.Operation(
+            summary = "Broadcast a VIP / National Funeral push notification",
+            security = @io.swagger.v3.oas.annotations.security.SecurityRequirement(name = "bearerAuth"))
+    public ApiResponse<Integer> broadcastVipNotification(
+            @jakarta.validation.Valid @RequestBody com.rememberme.api.dto.request.VipBroadcastRequest request,
+            com.rememberme.api.service.FuneralNotificationEngineService notificationEngineService) {
+        int sent = notificationEngineService.broadcastVipFuneral(request);
+        return ApiResponse.success("VIP broadcast notification sent to " + sent + " users", sent);
+    }
 }

@@ -1,11 +1,16 @@
 package com.rememberme.api.controller;
 
 import com.rememberme.api.dto.request.FcmTokenRequest;
+import com.rememberme.api.dto.request.LocationPingRequest;
+import com.rememberme.api.dto.request.NotificationPreferencesDto;
 import com.rememberme.api.dto.response.ApiResponse;
+import com.rememberme.api.dto.response.LocationPingResponse;
 import com.rememberme.api.entity.User;
 import com.rememberme.api.exception.ApiException;
 import com.rememberme.api.repository.UserRepository;
 import com.rememberme.api.service.FirebaseNotificationService;
+import com.rememberme.api.service.FuneralNotificationEngineService;
+import com.rememberme.api.service.NotificationPreferenceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.enums.ParameterIn;
@@ -25,12 +30,14 @@ import java.time.LocalDateTime;
 
 @RestController
 @RequestMapping("/api/notifications")
-@Tag(name = "Notifications", description = "Push/email/SMS notifications (Firebase Cloud Messaging)")
+@Tag(name = "Notifications", description = "Push notifications, preferences, and location proximity services")
 @RequiredArgsConstructor
 public class NotificationController {
 
     private final UserRepository userRepository;
     private final FirebaseNotificationService firebaseNotificationService;
+    private final NotificationPreferenceService preferenceService;
+    private final FuneralNotificationEngineService notificationEngineService;
 
     @PostMapping("/token")
     @Operation(
@@ -56,6 +63,37 @@ public class NotificationController {
         user.setUpdatedAt(LocalDateTime.now());
         userRepository.save(user);
         return ApiResponse.success("FCM token registered successfully", null);
+    }
+
+    @GetMapping("/preferences")
+    @Operation(summary = "Get current user's notification category preferences", security = @SecurityRequirement(name = "bearerAuth"))
+    public ApiResponse<NotificationPreferencesDto> getPreferences(Authentication authentication) {
+        User user = findAuthenticatedUser(authentication);
+        NotificationPreferencesDto dto = preferenceService.getPreferences(user);
+        return ApiResponse.success("Notification preferences retrieved", dto);
+    }
+
+    @PutMapping("/preferences")
+    @Operation(summary = "Update current user's notification category preferences", security = @SecurityRequirement(name = "bearerAuth"))
+    public ApiResponse<NotificationPreferencesDto> updatePreferences(
+            @Valid @RequestBody NotificationPreferencesDto dto,
+            Authentication authentication) {
+        User user = findAuthenticatedUser(authentication);
+        NotificationPreferencesDto updated = preferenceService.updatePreferences(user, dto);
+        return ApiResponse.success("Notification preferences updated successfully", updated);
+    }
+
+    @PostMapping("/location-ping")
+    @Operation(
+            summary = "Update device location ping and check for nearby famous graves & active funerals",
+            security = @SecurityRequirement(name = "bearerAuth"))
+    public ApiResponse<LocationPingResponse> processLocationPing(
+            @Valid @RequestBody LocationPingRequest request,
+            Authentication authentication) {
+        User user = findAuthenticatedUser(authentication);
+        LocationPingResponse response = notificationEngineService.processLocationPing(
+                user, request.getLatitude(), request.getLongitude());
+        return ApiResponse.success("Location ping processed successfully", response);
     }
 
     @PostMapping("/test")

@@ -10,5 +10,6 @@ import java.util.List;
 public interface RememberMeRepository extends JpaRepository<RememberMe, Long> {
     List<RememberMe> findByNameContainingIgnoreCase(String name);
     List<RememberMe> findByStatus(RememberMe.ApprovalStatus status);
+    List<RememberMe> findByIsFamousTrueOrIsHistoricalTrue();
     boolean existsByNameIgnoreCaseAndLatitudeAndLongitude(String name, Double latitude, Double longitude);
 }
