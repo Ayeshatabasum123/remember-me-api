@@ -21,6 +21,9 @@ public class FirebaseConfig {
     @Value("${firebase.service-account-file:firebase-service-account.json}")
     private String serviceAccountFile;
 
+    @Value("${firebase.project-id:remember-me-eb236}")
+    private String projectId;
+
     private static boolean mockMode = false;
 
     public static boolean isMockMode() {
@@ -56,11 +59,11 @@ public class FirebaseConfig {
             mockMode = false;
             return FirebaseApp.initializeApp(options);
         } catch (Exception e) {
-            log.warn("Firebase default credentials not available: {}. Initializing minimal FirebaseApp for development.", e.getMessage());
+            log.warn("Firebase default credentials not available: {}. Initializing minimal FirebaseApp for development (Project ID: {}).", e.getMessage(), projectId);
             mockMode = true;
             FirebaseOptions options = FirebaseOptions.builder()
                     .setCredentials(new MockGoogleCredentials())
-                    .setProjectId("remember-me-dev")
+                    .setProjectId(projectId)
                     .build();
             return FirebaseApp.initializeApp(options);
         }

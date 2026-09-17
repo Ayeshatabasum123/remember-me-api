@@ -9,6 +9,7 @@ import com.rememberme.api.config.FirebaseConfig;
 import com.rememberme.api.exception.ApiException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -19,9 +20,12 @@ public class FirebaseNotificationService {
 
     private final FirebaseMessaging firebaseMessaging;
 
+    @Value("${firebase.project-id:remember-me-eb236}")
+    private String projectId = "remember-me-eb236";
+
     public SendResult sendToToken(String fcmToken, String title, String body) {
         if (FirebaseConfig.isMockMode()) {
-            String mockMessageId = "projects/remember-me-dev/messages/mock-" + System.currentTimeMillis();
+            String mockMessageId = String.format("projects/%s/messages/mock-%d", getProjectId(), System.currentTimeMillis());
             log.info("[DEV MOCK MODE] Simulated FCM notification delivery to token: {}. Message ID: {}", fcmToken, mockMessageId);
             return SendResult.sent(mockMessageId);
         }
@@ -53,10 +57,23 @@ public class FirebaseNotificationService {
             throw new ApiException(messageDetails, HttpStatus.BAD_GATEWAY);
         } catch (Exception ex) {
             log.warn("Unexpected error during FCM notification delivery (falling back to mock mode): {}", ex.getMessage());
-            String mockMessageId = "projects/remember-me-dev/messages/mock-" + System.currentTimeMillis();
+            String mockMessageId = String.format("projects/%s/messages/mock-%d", getProjectId(), System.currentTimeMillis());
             log.info("Simulated FCM notification delivery for token: {}. Mock Message ID: {}", fcmToken, mockMessageId);
             return SendResult.sent(mockMessageId);
         }
+    }
+
+    private String getProjectId() {
+        try {
+            if (!com.google.firebase.FirebaseApp.getApps().isEmpty()) {
+                String appProjectId = com.google.firebase.FirebaseApp.getInstance().getOptions().getProjectId();
+                if (org.springframework.util.StringUtils.hasText(appProjectId)) {
+                    return appProjectId;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return org.springframework.util.StringUtils.hasText(projectId) ? projectId : "remember-me-eb236";
     }
 
     public record SendResult(boolean sent, boolean invalidToken, String messageId) {

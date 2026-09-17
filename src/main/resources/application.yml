@@ -45,7 +45,8 @@ aws:
     secret-key: your_secret_key
 
 firebase:
-  service-account-file: firebase-service-account.json
+  service-account-file: ${FIREBASE_SERVICE_ACCOUNT_FILE:firebase-service-account.json}
+  project-id: ${FIREBASE_PROJECT_ID:remember-me-eb236}
 
 springdoc:
   api-docs:
