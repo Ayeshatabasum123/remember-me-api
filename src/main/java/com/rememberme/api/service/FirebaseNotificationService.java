@@ -56,10 +56,11 @@ public class FirebaseNotificationService {
                     : "Firebase failed to send notification";
             throw new ApiException(messageDetails, HttpStatus.BAD_GATEWAY);
         } catch (Exception ex) {
-            log.warn("Unexpected error during FCM notification delivery (falling back to mock mode): {}", ex.getMessage());
-            String mockMessageId = String.format("projects/%s/messages/mock-%d", getProjectId(), System.currentTimeMillis());
-            log.info("Simulated FCM notification delivery for token: {}. Mock Message ID: {}", fcmToken, mockMessageId);
-            return SendResult.sent(mockMessageId);
+            log.error("Unexpected error during FCM notification delivery: {}", ex.getMessage(), ex);
+            String messageDetails = org.springframework.util.StringUtils.hasText(ex.getMessage())
+                    ? "Firebase notification failed: " + ex.getMessage()
+                    : "Firebase notification failed";
+            throw new ApiException(messageDetails, HttpStatus.BAD_GATEWAY);
         }
     }
 

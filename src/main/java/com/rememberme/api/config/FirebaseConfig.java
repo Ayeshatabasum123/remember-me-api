@@ -11,8 +11,12 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
+import org.springframework.util.StringUtils;
 
+import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 
 @Configuration
 @Slf4j
@@ -21,8 +25,14 @@ public class FirebaseConfig {
     @Value("${firebase.service-account-file:firebase-service-account.json}")
     private String serviceAccountFile;
 
+    @Value("${firebase.service-account-json:}")
+    private String serviceAccountJson;
+
     @Value("${firebase.project-id:remember-me-eb236}")
     private String projectId;
+
+    @Value("${firebase.enable-mock:false}")
+    private boolean enableMock;
 
     private static boolean mockMode = false;
 
@@ -41,25 +51,33 @@ public class FirebaseConfig {
             if (serviceAccountStream != null) {
                 FirebaseOptions options = FirebaseOptions.builder()
                         .setCredentials(GoogleCredentials.fromStream(serviceAccountStream))
+                        .setProjectId(projectId)
                         .build();
-                log.info("Initializing FirebaseApp with service account credentials from {}", serviceAccountFile);
+                log.info("Successfully initialized FirebaseApp with service account credentials for project: {}", projectId);
                 mockMode = false;
                 return FirebaseApp.initializeApp(options);
             }
         } catch (Exception e) {
-            log.warn("Could not load Firebase service account file '{}': {}. Falling back to default app initialization.",
-                    serviceAccountFile, e.getMessage());
+            log.error("Failed to load Firebase service account credentials for project '{}': {}", projectId, e.getMessage());
+            if (!enableMock) {
+                throw new IllegalStateException("Firebase service account initialization failed for project " + projectId + ": " + e.getMessage(), e);
+            }
         }
 
         try {
-            log.info("Attempting FirebaseApp initialization with default Google Credentials");
+            log.info("Attempting FirebaseApp initialization with default Google Application Credentials");
             FirebaseOptions options = FirebaseOptions.builder()
                     .setCredentials(GoogleCredentials.getApplicationDefault())
+                    .setProjectId(projectId)
                     .build();
             mockMode = false;
             return FirebaseApp.initializeApp(options);
         } catch (Exception e) {
-            log.warn("Firebase default credentials not available: {}. Initializing minimal FirebaseApp for development (Project ID: {}).", e.getMessage(), projectId);
+            log.warn("Firebase default application credentials not available: {}", e.getMessage());
+        }
+
+        if (enableMock) {
+            log.warn("Firebase credentials missing. Initializing minimal FirebaseApp for development/testing mock mode (Project ID: {}).", projectId);
             mockMode = true;
             FirebaseOptions options = FirebaseOptions.builder()
                     .setCredentials(new MockGoogleCredentials())
@@ -67,6 +85,10 @@ public class FirebaseConfig {
                     .build();
             return FirebaseApp.initializeApp(options);
         }
+
+        String errorMsg = String.format("Firebase Admin service account credentials are missing for project '%s'. Please set the FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_SERVICE_ACCOUNT_FILE environment variable on your deployment.", projectId);
+        log.error(errorMsg);
+        throw new IllegalStateException(errorMsg);
     }
 
     @Bean
@@ -75,6 +97,22 @@ public class FirebaseConfig {
     }
 
     private InputStream getServiceAccountStream() {
+        if (StringUtils.hasText(serviceAccountJson)) {
+            try {
+                log.info("Loading Firebase service account credentials from environment JSON configuration");
+                byte[] jsonBytes;
+                String trimmed = serviceAccountJson.trim();
+                if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+                    jsonBytes = Base64.getDecoder().decode(trimmed);
+                } else {
+                    jsonBytes = trimmed.getBytes(StandardCharsets.UTF_8);
+                }
+                return new ByteArrayInputStream(jsonBytes);
+            } catch (Exception e) {
+                log.error("Failed to parse firebase.service-account-json content: {}", e.getMessage());
+            }
+        }
+
         try {
             Resource classPathResource = new ClassPathResource(serviceAccountFile);
             if (classPathResource.exists()) {
