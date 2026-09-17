@@ -24,33 +24,42 @@ public class FirebaseNotificationService {
     private String projectId = "remember-me-eb236";
 
     public SendResult sendToToken(String fcmToken, String title, String body) {
+        return sendToToken(fcmToken, title, body, null);
+    }
+
+    public SendResult sendToToken(String fcmToken, String title, String body, java.util.Map<String, String> data) {
         if (FirebaseConfig.isMockMode()) {
             String mockMessageId = String.format("projects/%s/messages/mock-%d", getProjectId(), System.currentTimeMillis());
             log.info("[DEV MOCK MODE] Simulated FCM notification delivery to token: {}. Message ID: {}", fcmToken, mockMessageId);
             return SendResult.sent(mockMessageId);
         }
 
-        Message message = Message.builder()
+        Message.Builder messageBuilder = Message.builder()
                 .setToken(fcmToken)
                 .setNotification(Notification.builder()
                         .setTitle(title)
                         .setBody(body)
-                        .build())
-                .build();
+                        .build());
+
+        if (data != null && !data.isEmpty()) {
+            messageBuilder.putAllData(data);
+        }
+
+        Message message = messageBuilder.build();
 
         try {
             String messageId = firebaseMessaging.send(message);
-            log.info("Successfully sent notification to FCM token. Message ID: {}", messageId);
+            log.info("Successfully sent notification via Firebase Admin SDK. Message ID: {}", messageId);
             return SendResult.sent(messageId);
         } catch (FirebaseMessagingException ex) {
             MessagingErrorCode errorCode = ex.getMessagingErrorCode();
             if (errorCode == MessagingErrorCode.UNREGISTERED
                     || errorCode == MessagingErrorCode.INVALID_ARGUMENT) {
-                log.warn("Firebase rejected an invalid or unregistered FCM token: {}", errorCode);
+                log.warn("Firebase rejected an invalid or unregistered FCM token [{}]: {}", errorCode, ex.getMessage());
                 return SendResult.invalidTokenResult();
             }
 
-            log.error("Firebase failed to send an FCM notification: {}", errorCode, ex);
+            log.error("Firebase failed to send an FCM notification: [ErrorCode: {}] {}", errorCode, ex.getMessage(), ex);
             String messageDetails = org.springframework.util.StringUtils.hasText(ex.getMessage())
                     ? "Firebase failed to send notification: " + ex.getMessage()
                     : "Firebase failed to send notification";

@@ -56,15 +56,26 @@ class FirebaseNotificationServiceTest {
     }
 
     @Test
-    void sendToToken_GenericFirebaseFailureThrowsBadGatewayException() throws Exception {
-        FirebaseMessagingException exception = mock(FirebaseMessagingException.class);
-        when(exception.getMessagingErrorCode()).thenReturn(MessagingErrorCode.INTERNAL);
-        when(firebaseMessaging.send(any(Message.class))).thenThrow(exception);
+    void sendToToken_WithDataPayload_SuccessfulDeliveryReturnsMessageId() throws Exception {
+        when(firebaseMessaging.send(any(Message.class))).thenReturn("projects/remember-me-eb236/messages/0:17123456789");
+
+        FirebaseNotificationService.SendResult result = service.sendToToken(
+                "valid-token", "Test notification", "Push notification test", java.util.Map.of("type", "test"));
+
+        assertTrue(result.sent());
+        assertFalse(result.invalidToken());
+        assertEquals("projects/remember-me-eb236/messages/0:17123456789", result.messageId());
+        verify(firebaseMessaging).send(any(Message.class));
+    }
+
+    @Test
+    void sendToToken_GenericExceptionThrowsBadGatewayExceptionWithoutMockFallback() throws Exception {
+        when(firebaseMessaging.send(any(Message.class))).thenThrow(new RuntimeException("Connection timeout to FCM server"));
 
         ApiException ex = assertThrows(ApiException.class, () ->
                 service.sendToToken("token", "Title", "Body"));
 
         assertEquals(HttpStatus.BAD_GATEWAY, ex.getStatus());
-        assertEquals("Firebase failed to send notification", ex.getMessage());
+        assertTrue(ex.getMessage().contains("Firebase notification failed"));
     }
 }

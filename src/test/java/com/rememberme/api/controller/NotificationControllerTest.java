@@ -116,7 +116,7 @@ class NotificationControllerTest {
         currentUser.setFcmToken("saved-token");
         when(userRepository.findById(1L)).thenReturn(Optional.of(currentUser));
         when(firebaseNotificationService.sendToToken(
-                eq("saved-token"), any(String.class), any(String.class)))
+                eq("saved-token"), any(String.class), any(String.class), any()))
                 .thenReturn(FirebaseNotificationService.SendResult.sent("message-id"));
 
         mockMvc.perform(post("/api/notifications/test").queryParam("userId", "1"))
@@ -125,7 +125,7 @@ class NotificationControllerTest {
                 .andExpect(jsonPath("$.data").value("message-id"));
 
         verify(firebaseNotificationService).sendToToken(
-                eq("saved-token"), any(String.class), any(String.class));
+                eq("saved-token"), any(String.class), any(String.class), any());
     }
 
     @Test
@@ -135,9 +135,9 @@ class NotificationControllerTest {
 
         mockMvc.perform(post("/api/notifications/test").queryParam("userId", "1"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("FCM token is not registered for this user"));
+                .andExpect(jsonPath("$.message").value("FCM token not found for user"));
 
-        verify(firebaseNotificationService, never()).sendToToken(any(), any(), any());
+        verify(firebaseNotificationService, never()).sendToToken(any(), any(), any(), any());
     }
 
     @Test
@@ -147,7 +147,7 @@ class NotificationControllerTest {
                 .andExpect(status().isForbidden());
 
         verify(userRepository, never()).findById(2L);
-        verify(firebaseNotificationService, never()).sendToToken(any(), any(), any());
+        verify(firebaseNotificationService, never()).sendToToken(any(), any(), any(), any());
     }
 
     @Test
@@ -156,7 +156,7 @@ class NotificationControllerTest {
         currentUser.setFcmToken("invalid-token");
         when(userRepository.findById(1L)).thenReturn(Optional.of(currentUser));
         when(firebaseNotificationService.sendToToken(
-                eq("invalid-token"), any(String.class), any(String.class)))
+                eq("invalid-token"), any(String.class), any(String.class), any()))
                 .thenReturn(FirebaseNotificationService.SendResult.invalidTokenResult());
 
         mockMvc.perform(post("/api/notifications/test").queryParam("userId", "1"))

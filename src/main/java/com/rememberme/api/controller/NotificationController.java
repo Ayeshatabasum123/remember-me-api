@@ -121,13 +121,14 @@ public class NotificationController {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ApiException("User not found", HttpStatus.NOT_FOUND));
         if (!StringUtils.hasText(user.getFcmToken())) {
-            throw new ApiException("FCM token is not registered for this user", HttpStatus.BAD_REQUEST);
+            throw new ApiException("FCM token not found for user", HttpStatus.BAD_REQUEST);
         }
 
         FirebaseNotificationService.SendResult result = firebaseNotificationService.sendToToken(
                 user.getFcmToken(),
-                "Remember Me test notification",
-                "Firebase Cloud Messaging is configured successfully.");
+                "Test notification",
+                "Push notification test",
+                java.util.Map.of("type", "test"));
 
         if (result.invalidToken()) {
             user.setFcmToken(null);
