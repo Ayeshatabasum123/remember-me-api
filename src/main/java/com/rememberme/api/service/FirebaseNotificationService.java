@@ -28,6 +28,12 @@ public class FirebaseNotificationService {
     }
 
     public SendResult sendToToken(String fcmToken, String title, String body, java.util.Map<String, String> data) {
+        if (FirebaseConfig.isUnconfigured()) {
+            String reason = FirebaseConfig.getUnconfiguredReason();
+            log.error("Rejecting FCM notification request because Firebase is unconfigured: {}", reason);
+            throw new ApiException(reason, HttpStatus.BAD_GATEWAY);
+        }
+
         if (FirebaseConfig.isMockMode()) {
             String mockMessageId = String.format("projects/%s/messages/mock-%d", getProjectId(), System.currentTimeMillis());
             log.info("[DEV MOCK MODE] Simulated FCM notification delivery to token: {}. Message ID: {}", fcmToken, mockMessageId);

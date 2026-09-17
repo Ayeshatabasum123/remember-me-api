@@ -35,9 +35,19 @@ public class FirebaseConfig {
     private boolean enableMock;
 
     private static boolean mockMode = false;
+    private static boolean unconfigured = false;
+    private static String unconfiguredReason = null;
 
     public static boolean isMockMode() {
         return mockMode;
+    }
+
+    public static boolean isUnconfigured() {
+        return unconfigured;
+    }
+
+    public static String getUnconfiguredReason() {
+        return unconfiguredReason;
     }
 
     @Bean
@@ -60,12 +70,11 @@ public class FirebaseConfig {
                 app = FirebaseApp.initializeApp(options);
                 log.info("Successfully initialized FirebaseApp with service account credentials. Resolved Project ID: {}", app.getOptions().getProjectId());
                 mockMode = false;
+                unconfigured = false;
+                unconfiguredReason = null;
             }
         } catch (Exception e) {
             log.error("Failed to load Firebase service account credentials for project '{}': {}", projectId, e.getMessage());
-            if (!enableMock) {
-                throw new IllegalStateException("Firebase service account initialization failed for project " + projectId + ": " + e.getMessage(), e);
-            }
         }
 
         if (app == null) {
@@ -78,6 +87,8 @@ public class FirebaseConfig {
                 app = FirebaseApp.initializeApp(options);
                 log.info("Successfully initialized FirebaseApp with Application Default Credentials. Resolved Project ID: {}", app.getOptions().getProjectId());
                 mockMode = false;
+                unconfigured = false;
+                unconfiguredReason = null;
             } catch (Exception e) {
                 log.warn("Firebase default application credentials not available: {}", e.getMessage());
             }
@@ -87,9 +98,8 @@ public class FirebaseConfig {
             String resolvedProjectId = app.getOptions().getProjectId();
             if (StringUtils.hasText(projectId) && !projectId.equalsIgnoreCase(resolvedProjectId)) {
                 log.error("CRITICAL: Firebase Project ID mismatch! Configured: '{}', Credentials: '{}'", projectId, resolvedProjectId);
-                if (!enableMock) {
-                    throw new IllegalStateException(String.format("Firebase Project ID mismatch! Configured: %s, Credentials: %s", projectId, resolvedProjectId));
-                }
+                unconfigured = true;
+                unconfiguredReason = String.format("Firebase Project ID mismatch! Configured: %s, Credentials: %s", projectId, resolvedProjectId);
             }
             return app;
         }
@@ -97,6 +107,8 @@ public class FirebaseConfig {
         if (enableMock) {
             log.warn("Firebase credentials missing. Initializing minimal FirebaseApp for EXPLICIT TEST MOCK MODE ONLY (Project ID: {}).", projectId);
             mockMode = true;
+            unconfigured = false;
+            unconfiguredReason = null;
             FirebaseOptions options = FirebaseOptions.builder()
                     .setCredentials(new MockGoogleCredentials())
                     .setProjectId(projectId)
@@ -104,9 +116,15 @@ public class FirebaseConfig {
             return FirebaseApp.initializeApp(options);
         }
 
-        String errorMsg = String.format("Firebase Admin service account credentials are missing for project '%s'. Please set the FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_SERVICE_ACCOUNT_FILE environment variable on your deployment.", projectId);
-        log.error(errorMsg);
-        throw new IllegalStateException(errorMsg);
+        unconfigured = true;
+        unconfiguredReason = String.format("Firebase Admin service account credentials are missing for project '%s'. Please set the FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_SERVICE_ACCOUNT_FILE environment variable on your deployment.", projectId);
+        log.warn("WARNING: {}", unconfiguredReason);
+
+        FirebaseOptions fallbackOptions = FirebaseOptions.builder()
+                .setCredentials(new MockGoogleCredentials())
+                .setProjectId(projectId)
+                .build();
+        return FirebaseApp.initializeApp(fallbackOptions);
     }
 
     @Bean
