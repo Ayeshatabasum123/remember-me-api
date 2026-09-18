@@ -1,6 +1,7 @@
 package com.rememberme.api.config;
 
 import com.google.auth.oauth2.GoogleCredentials;
+import com.google.auth.oauth2.ServiceAccountCredentials;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.FirebaseOptions;
 import com.google.firebase.messaging.FirebaseMessaging;
@@ -28,7 +29,7 @@ public class FirebaseConfig {
     @Value("${firebase.service-account-json:}")
     private String serviceAccountJson;
 
-    @Value("${firebase.project-id:remember-me-eb236}")
+    @Value("${firebase.project-id:}")
     private String projectId;
 
     @Value("${firebase.enable-mock:false}")
@@ -63,28 +64,49 @@ public class FirebaseConfig {
         try {
             InputStream serviceAccountStream = getServiceAccountStream();
             if (serviceAccountStream != null) {
-                FirebaseOptions options = FirebaseOptions.builder()
-                        .setCredentials(GoogleCredentials.fromStream(serviceAccountStream))
-                        .setProjectId(projectId)
-                        .build();
-                app = FirebaseApp.initializeApp(options);
+                byte[] streamBytes = serviceAccountStream.readAllBytes();
+                GoogleCredentials credentials = GoogleCredentials.fromStream(new ByteArrayInputStream(streamBytes));
+
+                String credentialsProjectId = null;
+                if (credentials instanceof ServiceAccountCredentials sac) {
+                    credentialsProjectId = sac.getProjectId();
+                }
+
+                String effectiveProjectId = StringUtils.hasText(projectId) ? projectId.trim() : null;
+                if (StringUtils.hasText(credentialsProjectId)) {
+                    if (StringUtils.hasText(effectiveProjectId) && !effectiveProjectId.equalsIgnoreCase(credentialsProjectId)) {
+                        log.warn("Configured firebase.project-id ('{}') differs from Service Account project_id ('{}'). Using Service Account project_id '{}'.",
+                                effectiveProjectId, credentialsProjectId, credentialsProjectId);
+                    }
+                    effectiveProjectId = credentialsProjectId;
+                }
+
+                FirebaseOptions.Builder optionsBuilder = FirebaseOptions.builder()
+                        .setCredentials(credentials);
+
+                if (StringUtils.hasText(effectiveProjectId)) {
+                    optionsBuilder.setProjectId(effectiveProjectId);
+                }
+
+                app = FirebaseApp.initializeApp(optionsBuilder.build());
                 log.info("Successfully initialized FirebaseApp with service account credentials. Resolved Project ID: {}", app.getOptions().getProjectId());
                 mockMode = false;
                 unconfigured = false;
                 unconfiguredReason = null;
             }
         } catch (Exception e) {
-            log.error("Failed to load Firebase service account credentials for project '{}': {}", projectId, e.getMessage());
+            log.error("Failed to load Firebase service account credentials: {}", e.getMessage(), e);
         }
 
         if (app == null) {
             try {
                 log.info("Attempting FirebaseApp initialization with default Google Application Credentials");
-                FirebaseOptions options = FirebaseOptions.builder()
-                        .setCredentials(GoogleCredentials.getApplicationDefault())
-                        .setProjectId(projectId)
-                        .build();
-                app = FirebaseApp.initializeApp(options);
+                FirebaseOptions.Builder optionsBuilder = FirebaseOptions.builder()
+                        .setCredentials(GoogleCredentials.getApplicationDefault());
+                if (StringUtils.hasText(projectId)) {
+                    optionsBuilder.setProjectId(projectId.trim());
+                }
+                app = FirebaseApp.initializeApp(optionsBuilder.build());
                 log.info("Successfully initialized FirebaseApp with Application Default Credentials. Resolved Project ID: {}", app.getOptions().getProjectId());
                 mockMode = false;
                 unconfigured = false;
@@ -94,35 +116,31 @@ public class FirebaseConfig {
             }
         }
 
+        String fallbackProjectId = StringUtils.hasText(projectId) ? projectId.trim() : "remember-me-7a323";
+
         if (app != null) {
-            String resolvedProjectId = app.getOptions().getProjectId();
-            if (StringUtils.hasText(projectId) && !projectId.equalsIgnoreCase(resolvedProjectId)) {
-                log.error("CRITICAL: Firebase Project ID mismatch! Configured: '{}', Credentials: '{}'", projectId, resolvedProjectId);
-                unconfigured = true;
-                unconfiguredReason = String.format("Firebase Project ID mismatch! Configured: %s, Credentials: %s", projectId, resolvedProjectId);
-            }
             return app;
         }
 
         if (enableMock) {
-            log.warn("Firebase credentials missing. Initializing minimal FirebaseApp for EXPLICIT TEST MOCK MODE ONLY (Project ID: {}).", projectId);
+            log.warn("Firebase credentials missing. Initializing minimal FirebaseApp for EXPLICIT TEST MOCK MODE ONLY (Project ID: {}).", fallbackProjectId);
             mockMode = true;
             unconfigured = false;
             unconfiguredReason = null;
             FirebaseOptions options = FirebaseOptions.builder()
                     .setCredentials(new MockGoogleCredentials())
-                    .setProjectId(projectId)
+                    .setProjectId(fallbackProjectId)
                     .build();
             return FirebaseApp.initializeApp(options);
         }
 
         unconfigured = true;
-        unconfiguredReason = String.format("Firebase Admin service account credentials are missing for project '%s'. Please set the FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_SERVICE_ACCOUNT_FILE environment variable on your deployment.", projectId);
+        unconfiguredReason = "Firebase Admin service account credentials are missing or invalid. Please set the FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_SERVICE_ACCOUNT_FILE environment variable on your deployment.";
         log.warn("WARNING: {}", unconfiguredReason);
 
         FirebaseOptions fallbackOptions = FirebaseOptions.builder()
                 .setCredentials(new MockGoogleCredentials())
-                .setProjectId(projectId)
+                .setProjectId(fallbackProjectId)
                 .build();
         return FirebaseApp.initializeApp(fallbackOptions);
     }
@@ -136,11 +154,18 @@ public class FirebaseConfig {
         if (StringUtils.hasText(serviceAccountJson)) {
             try {
                 log.info("Loading Firebase service account credentials from environment JSON configuration");
-                byte[] jsonBytes;
                 String trimmed = serviceAccountJson.trim();
+                if ((trimmed.startsWith("'") && trimmed.endsWith("'")) || (trimmed.startsWith("\"") && trimmed.endsWith("\""))) {
+                    trimmed = trimmed.substring(1, trimmed.length() - 1).trim();
+                }
+
+                byte[] jsonBytes;
                 if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
                     jsonBytes = Base64.getDecoder().decode(trimmed);
                 } else {
+                    if (trimmed.contains("\\n") && !trimmed.contains("\n")) {
+                        trimmed = trimmed.replace("\\n", "\n");
+                    }
                     jsonBytes = trimmed.getBytes(StandardCharsets.UTF_8);
                 }
                 return new ByteArrayInputStream(jsonBytes);

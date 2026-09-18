@@ -20,8 +20,8 @@ public class FirebaseNotificationService {
 
     private final FirebaseMessaging firebaseMessaging;
 
-    @Value("${firebase.project-id:remember-me-eb236}")
-    private String projectId = "remember-me-eb236";
+    @Value("${firebase.project-id:}")
+    private String projectId;
 
     public SendResult sendToToken(String fcmToken, String title, String body) {
         return sendToToken(fcmToken, title, body, null);
@@ -89,7 +89,7 @@ public class FirebaseNotificationService {
             }
         } catch (Exception ignored) {
         }
-        return org.springframework.util.StringUtils.hasText(projectId) ? projectId : "remember-me-eb236";
+        return org.springframework.util.StringUtils.hasText(projectId) ? projectId : "remember-me-7a323";
     }
 
     public record SendResult(boolean sent, boolean invalidToken, String messageId) {
