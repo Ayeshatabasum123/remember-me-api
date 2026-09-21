@@ -21,7 +21,7 @@ public class NotificationPreferenceService {
 
     private final UserNotificationPreferenceRepository preferenceRepository;
 
-    @Transactional(readOnly = true)
+    @Transactional
     public NotificationPreferencesDto getPreferences(User user) {
         UserNotificationPreference pref = getOrCreatePreference(user);
         return mapToDto(pref);

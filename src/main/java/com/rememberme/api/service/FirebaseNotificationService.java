@@ -60,8 +60,10 @@ public class FirebaseNotificationService {
         } catch (FirebaseMessagingException ex) {
             MessagingErrorCode errorCode = ex.getMessagingErrorCode();
             if (errorCode == MessagingErrorCode.UNREGISTERED
-                    || errorCode == MessagingErrorCode.INVALID_ARGUMENT) {
-                log.warn("Firebase rejected an invalid or unregistered FCM token [{}]: {}", errorCode, ex.getMessage());
+                    || errorCode == MessagingErrorCode.INVALID_ARGUMENT
+                    || errorCode == MessagingErrorCode.THIRD_PARTY_AUTH_ERROR
+                    || (ex.getMessage() != null && ex.getMessage().toLowerCase().contains("senderid mismatch"))) {
+                log.warn("Firebase rejected an invalid, mismatched, or unregistered FCM token [{}]: {}", errorCode, ex.getMessage());
                 return SendResult.invalidTokenResult();
             }
 
