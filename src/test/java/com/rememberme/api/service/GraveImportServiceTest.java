@@ -61,9 +61,9 @@ public class GraveImportServiceTest {
 
         mockGraveyard = RememberMe.builder()
                 .id(1L)
-                .name("Al-Baqi Cemetery")
-                .latitude(24.4672)
-                .longitude(39.6142)
+                .name("Lincoln Tomb")
+                .latitude(39.8203)
+                .longitude(-89.6538)
                 .build();
 
         mockAdminUser = User.builder()
@@ -75,61 +75,47 @@ public class GraveImportServiceTest {
     }
 
     @Test
-    public void importGraves_ValidRow_Success() {
+    public void importGraves_ValidRow_SuccessWithDDMMYYYYSlashFormat() {
         String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath\n" +
-                "1,Lincoln Tomb,1,39.8203,-89.6538,Abraham Lincoln,12021809,15041865\n";
+                "1,Lincoln Tomb,1,39.8203,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865\n" +
+                "2,Lincoln Tomb,2,39.8204,-89.6539,Alan Turing,23/06/1912,07/06/1954\n";
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
 
         when(userRepository.findByEmail("superadmin@example.com")).thenReturn(Optional.of(mockAdminUser));
-        when(rememberMeRepository.findFirstByNameIgnoreCase("Lincoln Tomb")).thenReturn(Optional.empty());
+        when(rememberMeRepository.findFirstByNameIgnoreCase("Lincoln Tomb")).thenReturn(Optional.of(mockGraveyard));
+        when(graveRepository.existsByRememberMeIdAndGraveNumberIgnoreCase(1L, "1")).thenReturn(false);
+        when(graveRepository.existsByRememberMeIdAndGraveNumberIgnoreCase(1L, "2")).thenReturn(false);
 
-        RememberMe createdCemetery = RememberMe.builder()
-                .id(10L)
-                .name("Lincoln Tomb")
-                .latitude(39.8203)
-                .longitude(-89.6538)
-                .status(RememberMe.ApprovalStatus.APPROVED)
-                .build();
-
-        when(rememberMeRepository.save(any(RememberMe.class))).thenReturn(createdCemetery);
-        when(graveRepository.existsByRememberMeIdAndGraveNumberIgnoreCase(10L, "1")).thenReturn(false);
-
-        Grave savedGrave = Grave.builder()
-                .id(100L)
-                .rememberMe(createdCemetery)
-                .graveNumber("1")
-                .latitude(39.8203)
-                .longitude(-89.6538)
-                .build();
-        when(graveRepository.save(any(Grave.class))).thenReturn(savedGrave);
+        when(graveRepository.save(any(Grave.class))).thenAnswer(i -> i.getArgument(0));
 
         GraveImportResponseDto response = graveImportService.importGravesFromCsv(file, "SuperAdmin@123", "superadmin@example.com");
 
         assertNotNull(response);
-        assertEquals(1, response.getTotalRecords());
-        assertEquals(1, response.getSuccessfulRecords());
+        assertEquals(2, response.getTotalRecords());
+        assertEquals(2, response.getSuccessfulRecords());
         assertEquals(0, response.getFailedRecords());
         assertTrue(response.getErrors().isEmpty());
 
-        // Verify cemetery creation
-        ArgumentCaptor<RememberMe> cemeteryCaptor = ArgumentCaptor.forClass(RememberMe.class);
-        verify(rememberMeRepository).save(cemeteryCaptor.capture());
-        assertEquals("Lincoln Tomb", cemeteryCaptor.getValue().getName());
-
-        // Verify deceased person creation with parsed DDMMYYYY dates
+        // Verify deceased person creation with parsed DD/MM/YYYY dates
         ArgumentCaptor<DeceasedPerson> deceasedCaptor = ArgumentCaptor.forClass(DeceasedPerson.class);
-        verify(deceasedPersonRepository).save(deceasedCaptor.capture());
-        assertEquals("Abraham Lincoln", deceasedCaptor.getValue().getFullName());
-        assertEquals(LocalDate.of(1809, 2, 12), deceasedCaptor.getValue().getDateOfBirth());
-        assertEquals(LocalDate.of(1865, 4, 15), deceasedCaptor.getValue().getDateOfDeath());
+        verify(deceasedPersonRepository, times(2)).save(deceasedCaptor.capture());
+        List<DeceasedPerson> savedPersons = deceasedCaptor.getAllValues();
+
+        assertEquals("Abraham Lincoln", savedPersons.get(0).getFullName());
+        assertEquals(LocalDate.of(1809, 2, 12), savedPersons.get(0).getDateOfBirth());
+        assertEquals(LocalDate.of(1865, 4, 15), savedPersons.get(0).getDateOfDeath());
+
+        assertEquals("Alan Turing", savedPersons.get(1).getFullName());
+        assertEquals(LocalDate.of(1912, 6, 23), savedPersons.get(1).getDateOfBirth());
+        assertEquals(LocalDate.of(1954, 6, 7), savedPersons.get(1).getDateOfDeath());
     }
 
     @Test
     public void importGraves_CemeteryNameTooLong_RejectsRow() {
         String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath\n" +
-                "1,This Cemetery Name Is Way Too Long Beyond Twenty,1,39.8203,-89.6538,Abraham Lincoln,12021809,15041865\n";
+                "1,This Cemetery Name Is Way Too Long Beyond Twenty,1,39.8203,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865\n";
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
@@ -145,7 +131,7 @@ public class GraveImportServiceTest {
     @Test
     public void importGraves_DeceasedNameTooLong_RejectsRow() {
         String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath\n" +
-                "1,Lincoln Tomb,1,39.8203,-89.6538,This Deceased Name Is Extremely Long,12021809,15041865\n";
+                "1,Lincoln Tomb,1,39.8203,-89.6538,This Deceased Name Is Extremely Long,12/02/1809,15/04/1865\n";
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
@@ -161,9 +147,9 @@ public class GraveImportServiceTest {
     @Test
     public void importGraves_InvalidCoordinates_RejectsRow() {
         String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath\n" +
-                "1,Lincoln Tomb,1,invalid_lat,-89.6538,Abraham Lincoln,12021809,15041865\n" +
-                "2,Lincoln Tomb,2,95.0000,-89.6538,Abraham Lincoln,12021809,15041865\n" +
-                "3,Lincoln Tomb,3,39.8203,200.0000,Abraham Lincoln,12021809,15041865\n";
+                "1,Lincoln Tomb,1,invalid_lat,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865\n" +
+                "2,Lincoln Tomb,2,95.0000,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865\n" +
+                "3,Lincoln Tomb,3,39.8203,200.0000,Abraham Lincoln,12/02/1809,15/04/1865\n";
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
@@ -181,28 +167,29 @@ public class GraveImportServiceTest {
     @Test
     public void importGraves_InvalidDateFormat_RejectsRow() {
         String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath\n" +
-                "1,Lincoln Tomb,1,39.8203,-89.6538,Abraham Lincoln,1809-02-12,15041865\n" +  // Hyphenated format rejected
-                "2,Lincoln Tomb,2,39.8203,-89.6538,Abraham Lincoln,31022000,15041865\n" +   // 31 Feb rejected
-                "3,Lincoln Tomb,3,39.8203,-89.6538,Abraham Lincoln,32012000,15041865\n" +   // 32 Jan rejected
-                "4,Lincoln Tomb,4,39.8203,-89.6538,Abraham Lincoln,00000000,15041865\n";    // 00000000 rejected
+                "1,Lincoln Tomb,1,39.8203,-89.6538,Abraham Lincoln,1809-02-12,15/04/1865\n" +   // Hyphenated YYYY-MM-DD rejected
+                "2,Lincoln Tomb,2,39.8203,-89.6538,Abraham Lincoln,12021809,15/04/1865\n" +     // DDMMYYYY without slashes rejected
+                "3,Lincoln Tomb,3,39.8203,-89.6538,Abraham Lincoln,31/02/2000,15/04/1865\n" +   // 31 Feb rejected
+                "4,Lincoln Tomb,4,39.8203,-89.6538,Abraham Lincoln,32/01/2000,15/04/1865\n" +   // 32 Jan rejected
+                "5,Lincoln Tomb,5,39.8203,-89.6538,Abraham Lincoln,00/00/0000,15/04/1865\n";    // 00/00/0000 rejected
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
 
         GraveImportResponseDto response = graveImportService.importGravesFromCsv(file, "SuperAdmin@123", "superadmin@example.com");
 
-        assertEquals(4, response.getTotalRecords());
+        assertEquals(5, response.getTotalRecords());
         assertEquals(0, response.getSuccessfulRecords());
-        assertEquals(4, response.getFailedRecords());
-        for (int i = 0; i < 4; i++) {
-            assertEquals("Date of birth must be a valid date in DDMMYYYY format.", response.getErrors().get(i).getMessage());
+        assertEquals(5, response.getFailedRecords());
+        for (int i = 0; i < 5; i++) {
+            assertEquals("Date of birth must be a valid date in DD/MM/YYYY format.", response.getErrors().get(i).getMessage());
         }
     }
 
     @Test
     public void importGraves_DateOfDeathEarlierThanDateOfBirth_RejectsRow() {
         String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath\n" +
-                "1,Lincoln Tomb,1,39.8203,-89.6538,Abraham Lincoln,15041865,12021809\n";
+                "1,Lincoln Tomb,1,39.8203,-89.6538,Abraham Lincoln,15/04/1865,12/02/1809\n";
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
@@ -218,8 +205,8 @@ public class GraveImportServiceTest {
     @Test
     public void importGraves_DuplicateInSameCemetery_RejectsRow() {
         String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath\n" +
-                "1,Lincoln Tomb,1,39.8203,-89.6538,Person One,12021809,15041865\n" +
-                "2,Lincoln Tomb,1,39.8204,-89.6539,Person Two,12021809,15041865\n";
+                "1,Lincoln Tomb,1,39.8203,-89.6538,Person One,12/02/1809,15/04/1865\n" +
+                "2,Lincoln Tomb,1,39.8204,-89.6539,Person Two,12/02/1809,15/04/1865\n";
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
@@ -239,7 +226,7 @@ public class GraveImportServiceTest {
     @Test
     public void importGraves_InvalidSuperAdminPassword_ThrowsApiException() {
         String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath\n" +
-                "1,Lincoln Tomb,1,39.8203,-89.6538,Abraham Lincoln,12021809,15041865\n";
+                "1,Lincoln Tomb,1,39.8203,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865\n";
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
 

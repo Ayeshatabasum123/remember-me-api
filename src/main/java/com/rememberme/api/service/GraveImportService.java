@@ -37,7 +37,7 @@ import java.util.*;
 @Slf4j
 public class GraveImportService {
 
-    private static final DateTimeFormatter STRICT_DDMMYYYY = DateTimeFormatter.ofPattern("ddMMuuuu")
+    private static final DateTimeFormatter STRICT_DD_MM_YYYY = DateTimeFormatter.ofPattern("dd/MM/uuuu")
             .withResolverStyle(ResolverStyle.STRICT);
 
     private final GraveRepository graveRepository;
@@ -471,15 +471,16 @@ public class GraveImportService {
             throw new IllegalArgumentException(fieldDisplayName + " is required.");
         }
         String clean = dateStr.trim();
-        if (!clean.matches("^\\d{8}$")) {
-            throw new IllegalArgumentException(fieldDisplayName + " must be a valid date in DDMMYYYY format.");
+        if (!clean.matches("^\\d{2}/\\d{2}/\\d{4}$")) {
+            throw new IllegalArgumentException(fieldDisplayName + " must be a valid date in DD/MM/YYYY format.");
         }
         try {
-            return LocalDate.parse(clean, STRICT_DDMMYYYY);
+            return LocalDate.parse(clean, STRICT_DD_MM_YYYY);
         } catch (DateTimeParseException e) {
-            throw new IllegalArgumentException(fieldDisplayName + " must be a valid date in DDMMYYYY format.");
+            throw new IllegalArgumentException(fieldDisplayName + " must be a valid date in DD/MM/YYYY format.");
         }
     }
+
 
     private void validateHeaders(Map<String, Integer> headerIndexMap) {
         List<String> missing = new ArrayList<>();
