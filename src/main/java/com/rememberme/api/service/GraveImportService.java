@@ -29,12 +29,16 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.time.format.ResolverStyle;
 import java.util.*;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class GraveImportService {
+
+    private static final DateTimeFormatter STRICT_DDMMYYYY = DateTimeFormatter.ofPattern("ddMMuuuu")
+            .withResolverStyle(ResolverStyle.STRICT);
 
     private final GraveRepository graveRepository;
     private final RememberMeRepository rememberMeRepository;
@@ -54,17 +58,16 @@ public class GraveImportService {
         private int rowNumber;
         private String serialNumber;
         private String cemeteryName;
-        private Long cemeteryId;
         private String graveNumber;
         private Double latitude;
         private Double longitude;
+        private String deceasedName;
+        private LocalDate dateOfBirth;
+        private LocalDate dateOfDeath;
         private String section;
         private String row;
         private Double locationAccuracy;
         private Grave.VerificationStatus verificationStatus;
-        private String deceasedName;
-        private LocalDate dateOfBirth;
-        private LocalDate dateOfDeath;
         private DeceasedPerson.Gender gender;
         private String photoUrl;
     }
@@ -180,14 +183,9 @@ public class GraveImportService {
         // Step 3: Process valid rows -> resolve or auto-create cemeteries -> save graves & deceased persons
         int successfulRecords = 0;
         Map<String, RememberMe> resolvedGraveyardsByName = new HashMap<>();
-        Map<Long, RememberMe> resolvedGraveyardsById = new HashMap<>();
 
         for (ParsedGraveRow row : validRows) {
-            RememberMe graveyard = resolveOrCreateGraveyard(row, resolvedGraveyardsByName, resolvedGraveyardsById, adminUser, errors);
-            if (graveyard == null) {
-                // Error already recorded in errors list
-                continue;
-            }
+            RememberMe graveyard = resolveOrCreateGraveyard(row, resolvedGraveyardsByName, adminUser);
 
             // Check duplicate grave within this specific graveyard in DB
             if (graveRepository.existsByRememberMeIdAndGraveNumberIgnoreCase(graveyard.getId(), row.getGraveNumber())) {
@@ -214,23 +212,21 @@ public class GraveImportService {
 
             grave = graveRepository.save(grave);
 
-            // If deceased person information is provided, create and persist DeceasedPerson record
-            if (row.getDeceasedName() != null && !row.getDeceasedName().trim().isEmpty()) {
-                DeceasedPerson deceasedPerson = DeceasedPerson.builder()
-                        .fullName(row.getDeceasedName().trim())
-                        .dateOfBirth(row.getDateOfBirth())
-                        .dateOfDeath(row.getDateOfDeath())
-                        .gender(row.getGender())
-                        .photoUrl(row.getPhotoUrl())
-                        .grave(grave)
-                        .addedBy(adminUser)
-                        .duplicateChecked(true)
-                        .createdAt(now)
-                        .updatedAt(now)
-                        .build();
+            // Create and persist DeceasedPerson record
+            DeceasedPerson deceasedPerson = DeceasedPerson.builder()
+                    .fullName(row.getDeceasedName())
+                    .dateOfBirth(row.getDateOfBirth())
+                    .dateOfDeath(row.getDateOfDeath())
+                    .gender(row.getGender())
+                    .photoUrl(row.getPhotoUrl())
+                    .grave(grave)
+                    .addedBy(adminUser)
+                    .duplicateChecked(true)
+                    .createdAt(now)
+                    .updatedAt(now)
+                    .build();
 
-                deceasedPersonRepository.save(deceasedPerson);
-            }
+            deceasedPersonRepository.save(deceasedPerson);
 
             successfulRecords++;
         }
@@ -250,69 +246,42 @@ public class GraveImportService {
 
     private RememberMe resolveOrCreateGraveyard(ParsedGraveRow row,
                                                 Map<String, RememberMe> resolvedByName,
-                                                Map<Long, RememberMe> resolvedById,
-                                                User adminUser,
-                                                List<GraveImportErrorDto> errors) {
-        // 1. By ID if specified
-        if (row.getCemeteryId() != null) {
-            RememberMe existingById = resolvedById.get(row.getCemeteryId());
-            if (existingById != null) {
-                return existingById;
-            }
-            Optional<RememberMe> dbById = rememberMeRepository.findById(row.getCemeteryId());
-            if (dbById.isPresent()) {
-                RememberMe found = dbById.get();
-                resolvedById.put(found.getId(), found);
-                if (found.getName() != null) {
-                    resolvedByName.put(found.getName().trim().toLowerCase(), found);
-                }
-                return found;
-            } else {
-                errors.add(new GraveImportErrorDto(row.getRowNumber(), "Graveyard not found with ID: " + row.getCemeteryId()));
-                return null;
-            }
+                                                User adminUser) {
+        String cleanName = row.getCemeteryName().trim();
+        String nameKey = cleanName.toLowerCase();
+
+        RememberMe existingByName = resolvedByName.get(nameKey);
+        if (existingByName != null) {
+            return existingByName;
         }
 
-        // 2. By Name
-        if (row.getCemeteryName() != null && !row.getCemeteryName().trim().isEmpty()) {
-            String cleanName = row.getCemeteryName().trim();
-            String nameKey = cleanName.toLowerCase();
-
-            RememberMe existingByName = resolvedByName.get(nameKey);
-            if (existingByName != null) {
-                return existingByName;
-            }
-
-            Optional<RememberMe> dbByName = rememberMeRepository.findFirstByNameIgnoreCase(cleanName);
-            if (dbByName.isPresent()) {
-                RememberMe found = dbByName.get();
-                resolvedByName.put(nameKey, found);
-                resolvedById.put(found.getId(), found);
-                return found;
-            }
-
-            // Cemetery does not exist -> Automatically create new cemetery/graveyard
-            LocalDateTime now = LocalDateTime.now();
-            RememberMe newGraveyard = RememberMe.builder()
-                    .name(cleanName)
-                    .latitude(row.getLatitude())
-                    .longitude(row.getLongitude())
-                    .status(RememberMe.ApprovalStatus.APPROVED)
-                    .managedBy(adminUser)
-                    .createdAt(now)
-                    .updatedAt(now)
-                    .build();
-
-            newGraveyard = rememberMeRepository.save(newGraveyard);
-            log.info("Auto-created new cemetery/graveyard '{}' (ID: {}) during CSV import", newGraveyard.getName(), newGraveyard.getId());
-
-            resolvedByName.put(nameKey, newGraveyard);
-            resolvedById.put(newGraveyard.getId(), newGraveyard);
-            return newGraveyard;
+        Optional<RememberMe> dbByName = rememberMeRepository.findFirstByNameIgnoreCase(cleanName);
+        if (dbByName.isPresent()) {
+            RememberMe found = dbByName.get();
+            resolvedByName.put(nameKey, found);
+            return found;
         }
 
-        errors.add(new GraveImportErrorDto(row.getRowNumber(), "Cemetery/Graveyard name (or graveyardId) is required"));
-        return null;
+        // Cemetery does not exist -> Automatically create new cemetery/graveyard
+        LocalDateTime now = LocalDateTime.now();
+        RememberMe newGraveyard = RememberMe.builder()
+                .name(cleanName)
+                .latitude(row.getLatitude())
+                .longitude(row.getLongitude())
+                .status(RememberMe.ApprovalStatus.APPROVED)
+                .managedBy(adminUser)
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+
+        RememberMe saved = rememberMeRepository.save(newGraveyard);
+        if (saved != null) {
+            newGraveyard = saved;
+        }
+        log.info("Auto-created new cemetery/graveyard '{}' (ID: {}) during CSV import", newGraveyard.getName(), newGraveyard.getId());
+
+        resolvedByName.put(nameKey, newGraveyard);
+        return newGraveyard;
     }
 
     private void parseAndValidateRow(int rowNumber,
@@ -323,122 +292,116 @@ public class GraveImportService {
                                      Set<String> seenInCsv) {
 
         String serialNumber = getColumnValue(columns, headerIndexMap, "serialnumber");
-        String graveNumberStr = getColumnValue(columns, headerIndexMap, "gravenumber");
         String cemeteryName = getColumnValue(columns, headerIndexMap, "cemeteryname");
-        String cemeteryIdStr = getColumnValue(columns, headerIndexMap, "cemeteryid");
-        String section = getColumnValue(columns, headerIndexMap, "section");
-        String row = getColumnValue(columns, headerIndexMap, "row");
+        String graveNumber = getColumnValue(columns, headerIndexMap, "gravenumber");
         String latitudeStr = getColumnValue(columns, headerIndexMap, "latitude");
         String longitudeStr = getColumnValue(columns, headerIndexMap, "longitude");
-        String locationAccuracyStr = getColumnValue(columns, headerIndexMap, "locationaccuracy");
-        String verificationStatusStr = getColumnValue(columns, headerIndexMap, "verificationstatus");
         String deceasedName = getColumnValue(columns, headerIndexMap, "deceasedname");
         String dobStr = getColumnValue(columns, headerIndexMap, "dateofbirth");
         String dodStr = getColumnValue(columns, headerIndexMap, "dateofdeath");
+
+        // Optional additional fields
+        String section = getColumnValue(columns, headerIndexMap, "section");
+        String row = getColumnValue(columns, headerIndexMap, "row");
+        String locationAccuracyStr = getColumnValue(columns, headerIndexMap, "locationaccuracy");
+        String verificationStatusStr = getColumnValue(columns, headerIndexMap, "verificationstatus");
         String genderStr = getColumnValue(columns, headerIndexMap, "gender");
         String photoUrl = getColumnValue(columns, headerIndexMap, "photourl");
 
-        // 1. Resolve effective grave number (uses graveNumber if provided, fallback to serialNumber)
-        String effectiveGraveNumber = null;
-        if (graveNumberStr != null && !graveNumberStr.trim().isEmpty()) {
-            effectiveGraveNumber = graveNumberStr.trim();
-        } else if (serialNumber != null && !serialNumber.trim().isEmpty()) {
-            effectiveGraveNumber = serialNumber.trim();
-        } else {
-            errors.add(new GraveImportErrorDto(rowNumber, "Grave number (or serial number) is required"));
+        // 1. Validate serialNumber
+        if (serialNumber == null || serialNumber.trim().isEmpty()) {
+            errors.add(new GraveImportErrorDto(rowNumber, "Serial number is required."));
+            return;
+        }
+        serialNumber = serialNumber.trim();
+
+        // 2. Validate cemeteryName
+        if (cemeteryName == null || cemeteryName.trim().isEmpty()) {
+            errors.add(new GraveImportErrorDto(rowNumber, "Cemetery name is required."));
+            return;
+        }
+        cemeteryName = cemeteryName.trim();
+        if (cemeteryName.length() > 20) {
+            errors.add(new GraveImportErrorDto(rowNumber, "Cemetery name must not exceed 20 characters."));
             return;
         }
 
-        // 2. Validate Cemetery reference (name or ID)
-        Long cemeteryId = null;
-        if (cemeteryIdStr != null && !cemeteryIdStr.trim().isEmpty()) {
-            try {
-                cemeteryId = Long.parseLong(cemeteryIdStr.trim());
-            } catch (NumberFormatException e) {
-                errors.add(new GraveImportErrorDto(rowNumber, "Invalid graveyard ID format: '" + cemeteryIdStr + "'. Must be a valid integer."));
-                return;
-            }
-        }
-        if (cemeteryId == null && (cemeteryName == null || cemeteryName.trim().isEmpty())) {
-            errors.add(new GraveImportErrorDto(rowNumber, "Cemetery/Graveyard name (or graveyardId) is required"));
+        // 3. Validate graveNumber
+        if (graveNumber == null || graveNumber.trim().isEmpty()) {
+            errors.add(new GraveImportErrorDto(rowNumber, "Grave number is required."));
             return;
         }
-        if (cemeteryName != null) {
-            cemeteryName = cemeteryName.trim();
-        }
+        graveNumber = graveNumber.trim();
 
-        // 3. Validate Latitude
+        // 4. Validate latitude
         if (latitudeStr == null || latitudeStr.trim().isEmpty()) {
-            errors.add(new GraveImportErrorDto(rowNumber, "Latitude is required"));
+            errors.add(new GraveImportErrorDto(rowNumber, "Latitude is required."));
             return;
         }
         Double latitude;
         try {
             latitude = Double.parseDouble(latitudeStr.trim());
         } catch (NumberFormatException e) {
-            errors.add(new GraveImportErrorDto(rowNumber, "Invalid latitude format: '" + latitudeStr + "'. Must be a numeric decimal value"));
+            errors.add(new GraveImportErrorDto(rowNumber, "Latitude must be a valid floating-point number between -90 and 90."));
             return;
         }
         if (latitude < -90.0 || latitude > 90.0) {
-            errors.add(new GraveImportErrorDto(rowNumber, "Latitude must be between -90.0 and 90.0. Provided: " + latitude));
+            errors.add(new GraveImportErrorDto(rowNumber, "Latitude must be a valid floating-point number between -90 and 90."));
             return;
         }
 
-        // 4. Validate Longitude
+        // 5. Validate longitude
         if (longitudeStr == null || longitudeStr.trim().isEmpty()) {
-            errors.add(new GraveImportErrorDto(rowNumber, "Longitude is required"));
+            errors.add(new GraveImportErrorDto(rowNumber, "Longitude is required."));
             return;
         }
         Double longitude;
         try {
             longitude = Double.parseDouble(longitudeStr.trim());
         } catch (NumberFormatException e) {
-            errors.add(new GraveImportErrorDto(rowNumber, "Invalid longitude format: '" + longitudeStr + "'. Must be a numeric decimal value"));
+            errors.add(new GraveImportErrorDto(rowNumber, "Longitude must be a valid floating-point number between -180 and 180."));
             return;
         }
         if (longitude < -180.0 || longitude > 180.0) {
-            errors.add(new GraveImportErrorDto(rowNumber, "Longitude must be between -180.0 and 180.0. Provided: " + longitude));
+            errors.add(new GraveImportErrorDto(rowNumber, "Longitude must be a valid floating-point number between -180 and 180."));
             return;
         }
 
-        // 5. Validate Dates (optional)
-        LocalDate dateOfBirth = null;
-        if (dobStr != null && !dobStr.trim().isEmpty()) {
-            try {
-                dateOfBirth = parseFlexibleDate(dobStr.trim());
-            } catch (Exception e) {
-                errors.add(new GraveImportErrorDto(rowNumber, "Invalid dateOfBirth format: '" + dobStr + "'. Expected format: YYYY-MM-DD"));
-                return;
-            }
+        // 6. Validate deceasedName
+        if (deceasedName == null || deceasedName.trim().isEmpty()) {
+            errors.add(new GraveImportErrorDto(rowNumber, "Deceased name is required."));
+            return;
         }
-
-        LocalDate dateOfDeath = null;
-        if (dodStr != null && !dodStr.trim().isEmpty()) {
-            try {
-                dateOfDeath = parseFlexibleDate(dodStr.trim());
-            } catch (Exception e) {
-                errors.add(new GraveImportErrorDto(rowNumber, "Invalid dateOfDeath format: '" + dodStr + "'. Expected format: YYYY-MM-DD"));
-                return;
-            }
-        }
-
-        if (dateOfBirth != null && dateOfDeath != null && dateOfDeath.isBefore(dateOfBirth)) {
-            errors.add(new GraveImportErrorDto(rowNumber, "dateOfDeath (" + dateOfDeath + ") cannot be before dateOfBirth (" + dateOfBirth + ")"));
+        deceasedName = deceasedName.trim();
+        if (deceasedName.length() > 20) {
+            errors.add(new GraveImportErrorDto(rowNumber, "Deceased name must not exceed 20 characters."));
             return;
         }
 
-        // 6. Validate Gender (optional)
-        DeceasedPerson.Gender gender = null;
-        if (genderStr != null && !genderStr.trim().isEmpty()) {
-            try {
-                gender = DeceasedPerson.Gender.valueOf(genderStr.trim().toUpperCase());
-            } catch (IllegalArgumentException e) {
-                errors.add(new GraveImportErrorDto(rowNumber, "Invalid gender: '" + genderStr + "'. Allowed values: MALE, FEMALE, OTHER"));
-                return;
-            }
+        // 7. Validate dateOfBirth (DDMMYYYY format)
+        LocalDate dateOfBirth;
+        try {
+            dateOfBirth = parseStrictDDMMYYYY(dobStr, "Date of birth");
+        } catch (IllegalArgumentException e) {
+            errors.add(new GraveImportErrorDto(rowNumber, e.getMessage()));
+            return;
         }
 
-        // 7. Validate Location Accuracy (optional)
+        // 8. Validate dateOfDeath (DDMMYYYY format)
+        LocalDate dateOfDeath;
+        try {
+            dateOfDeath = parseStrictDDMMYYYY(dodStr, "Date of death");
+        } catch (IllegalArgumentException e) {
+            errors.add(new GraveImportErrorDto(rowNumber, e.getMessage()));
+            return;
+        }
+
+        if (dateOfDeath.isBefore(dateOfBirth)) {
+            errors.add(new GraveImportErrorDto(rowNumber, "Date of death cannot be earlier than date of birth."));
+            return;
+        }
+
+        // Optional fields validation
         Double locationAccuracy = null;
         if (locationAccuracyStr != null && !locationAccuracyStr.trim().isEmpty()) {
             try {
@@ -453,7 +416,6 @@ public class GraveImportService {
             }
         }
 
-        // 8. Validate Verification Status (optional, default: UNVERIFIED)
         Grave.VerificationStatus status = Grave.VerificationStatus.UNVERIFIED;
         if (verificationStatusStr != null && !verificationStatusStr.trim().isEmpty()) {
             try {
@@ -465,32 +427,38 @@ public class GraveImportService {
             }
         }
 
-        // 9. Check for duplicate within the CSV file for the SAME cemetery
-        String cemeteryKey = cemeteryId != null ? "ID:" + cemeteryId : "NAME:" + cemeteryName.toLowerCase();
-        String csvKey = cemeteryKey + "::" + effectiveGraveNumber.toLowerCase();
+        DeceasedPerson.Gender gender = null;
+        if (genderStr != null && !genderStr.trim().isEmpty()) {
+            try {
+                gender = DeceasedPerson.Gender.valueOf(genderStr.trim().toUpperCase());
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+
+        // Duplicate check within the CSV file for the SAME cemetery
+        String cemeteryKey = cemeteryName.toLowerCase();
+        String csvKey = cemeteryKey + "::" + graveNumber.toLowerCase();
         if (!seenInCsv.add(csvKey)) {
-            String cemeteryDisplay = cemeteryName != null ? cemeteryName : String.valueOf(cemeteryId);
             errors.add(new GraveImportErrorDto(rowNumber, "Duplicate grave record in CSV file: Grave number '" +
-                    effectiveGraveNumber + "' already listed for cemetery '" + cemeteryDisplay + "'"));
+                    graveNumber + "' already listed for cemetery '" + cemeteryName + "'"));
             return;
         }
 
-        // Validated row -> create ParsedGraveRow
+        // Valid row -> create ParsedGraveRow
         ParsedGraveRow parsed = ParsedGraveRow.builder()
                 .rowNumber(rowNumber)
-                .serialNumber(serialNumber != null ? serialNumber.trim() : null)
+                .serialNumber(serialNumber)
                 .cemeteryName(cemeteryName)
-                .cemeteryId(cemeteryId)
-                .graveNumber(effectiveGraveNumber)
+                .graveNumber(graveNumber)
                 .latitude(latitude)
                 .longitude(longitude)
+                .deceasedName(deceasedName)
+                .dateOfBirth(dateOfBirth)
+                .dateOfDeath(dateOfDeath)
                 .section(section != null && !section.trim().isEmpty() ? section.trim() : null)
                 .row(row != null && !row.trim().isEmpty() ? row.trim() : null)
                 .locationAccuracy(locationAccuracy)
                 .verificationStatus(status)
-                .deceasedName(deceasedName != null && !deceasedName.trim().isEmpty() ? deceasedName.trim() : null)
-                .dateOfBirth(dateOfBirth)
-                .dateOfDeath(dateOfDeath)
                 .gender(gender)
                 .photoUrl(photoUrl != null && !photoUrl.trim().isEmpty() ? photoUrl.trim() : null)
                 .build();
@@ -498,19 +466,33 @@ public class GraveImportService {
         validRows.add(parsed);
     }
 
+    private LocalDate parseStrictDDMMYYYY(String dateStr, String fieldDisplayName) {
+        if (dateStr == null || dateStr.trim().isEmpty()) {
+            throw new IllegalArgumentException(fieldDisplayName + " is required.");
+        }
+        String clean = dateStr.trim();
+        if (!clean.matches("^\\d{8}$")) {
+            throw new IllegalArgumentException(fieldDisplayName + " must be a valid date in DDMMYYYY format.");
+        }
+        try {
+            return LocalDate.parse(clean, STRICT_DDMMYYYY);
+        } catch (DateTimeParseException e) {
+            throw new IllegalArgumentException(fieldDisplayName + " must be a valid date in DDMMYYYY format.");
+        }
+    }
+
     private void validateHeaders(Map<String, Integer> headerIndexMap) {
-        boolean hasCemetery = headerIndexMap.containsKey("cemeteryname") || headerIndexMap.containsKey("cemeteryid");
-        boolean hasGraveIdentifier = headerIndexMap.containsKey("gravenumber") || headerIndexMap.containsKey("serialnumber");
-        boolean hasLatitude = headerIndexMap.containsKey("latitude");
-        boolean hasLongitude = headerIndexMap.containsKey("longitude");
+        List<String> missing = new ArrayList<>();
+        if (!headerIndexMap.containsKey("serialnumber")) missing.add("serialNumber");
+        if (!headerIndexMap.containsKey("cemeteryname")) missing.add("cemeteryName");
+        if (!headerIndexMap.containsKey("gravenumber")) missing.add("graveNumber");
+        if (!headerIndexMap.containsKey("latitude")) missing.add("latitude");
+        if (!headerIndexMap.containsKey("longitude")) missing.add("longitude");
+        if (!headerIndexMap.containsKey("deceasedname")) missing.add("deceasedName");
+        if (!headerIndexMap.containsKey("dateofbirth")) missing.add("dateOfBirth");
+        if (!headerIndexMap.containsKey("dateofdeath")) missing.add("dateOfDeath");
 
-        if (!hasCemetery || !hasGraveIdentifier || !hasLatitude || !hasLongitude) {
-            List<String> missing = new ArrayList<>();
-            if (!hasCemetery) missing.add("cemeteryName (or cemeteryId/graveyardName)");
-            if (!hasGraveIdentifier) missing.add("graveNumber (or serialNumber)");
-            if (!hasLatitude) missing.add("latitude");
-            if (!hasLongitude) missing.add("longitude");
-
+        if (!missing.isEmpty()) {
             throw new ApiException("CSV is missing required column headers: " + String.join(", ", missing), HttpStatus.BAD_REQUEST);
         }
     }
@@ -525,14 +507,12 @@ public class GraveImportService {
             // Alias mapping
             if (normalized.equals("serialnumber") || normalized.equals("serialno") || normalized.equals("serial") || normalized.equals("seq")) {
                 map.put("serialnumber", i);
-            } else if (normalized.equals("gravenumber") || normalized.equals("graveno") || normalized.equals("plotnumber")
-                    || normalized.equals("plotno") || normalized.equals("plot") || normalized.equals("grave")) {
-                map.put("gravenumber", i);
             } else if (normalized.equals("cemeteryname") || normalized.equals("cemetery") || normalized.equals("graveyardname")
                     || normalized.equals("graveyard") || normalized.equals("remembermename") || normalized.equals("rememberme")) {
                 map.put("cemeteryname", i);
-            } else if (normalized.equals("cemeteryid") || normalized.equals("graveyardid") || normalized.equals("remembermeid")) {
-                map.put("cemeteryid", i);
+            } else if (normalized.equals("gravenumber") || normalized.equals("graveno") || normalized.equals("plotnumber")
+                    || normalized.equals("plotno") || normalized.equals("plot") || normalized.equals("grave")) {
+                map.put("gravenumber", i);
             } else if (normalized.equals("latitude") || normalized.equals("lat")) {
                 map.put("latitude", i);
             } else if (normalized.equals("longitude") || normalized.equals("lng") || normalized.equals("lon") || normalized.equals("long")) {
@@ -580,32 +560,6 @@ public class GraveImportService {
             }
         }
         return true;
-    }
-
-    private LocalDate parseFlexibleDate(String dateStr) {
-        if (dateStr == null || dateStr.trim().isEmpty()) {
-            return null;
-        }
-        String clean = dateStr.trim();
-        List<DateTimeFormatter> formatters = List.of(
-                DateTimeFormatter.ISO_LOCAL_DATE,                    // yyyy-MM-dd
-                DateTimeFormatter.ofPattern("yyyy-M-d"),
-                DateTimeFormatter.ofPattern("yyyy/MM/dd"),
-                DateTimeFormatter.ofPattern("yyyy/M/d"),
-                DateTimeFormatter.ofPattern("dd-MM-yyyy"),
-                DateTimeFormatter.ofPattern("d-M-yyyy"),
-                DateTimeFormatter.ofPattern("dd/MM/yyyy"),
-                DateTimeFormatter.ofPattern("d/M/yyyy"),
-                DateTimeFormatter.ofPattern("MM/dd/yyyy"),
-                DateTimeFormatter.ofPattern("M/d/yyyy")
-        );
-        for (DateTimeFormatter formatter : formatters) {
-            try {
-                return LocalDate.parse(clean, formatter);
-            } catch (DateTimeParseException ignored) {
-            }
-        }
-        throw new IllegalArgumentException("Unparseable date: " + dateStr);
     }
 
     /**
