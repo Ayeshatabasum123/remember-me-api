@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -58,6 +59,9 @@ public class AdminSecurityControllerTest {
 
     @MockBean
     private com.rememberme.api.service.FuneralNotificationEngineService notificationEngineService;
+
+    @MockBean
+    private com.rememberme.api.service.GraveImportService graveImportService;
 
     private RememberMe mockRememberMe;
     private Report mockReport;
@@ -136,13 +140,44 @@ public class AdminSecurityControllerTest {
 
     // --- GET /api/graveyards Endpoint verification ---
 
+    // --- CSV IMPORT ENDPOINT TESTS ---
+
+    @Test
+    @WithMockUser(username = "user@example.com", roles = {"USER"})
+    public void importGraves_ForbiddenForNormalUser() throws Exception {
+        org.springframework.mock.web.MockMultipartFile file = new org.springframework.mock.web.MockMultipartFile(
+                "file", "graves.csv", "text/csv", "serialNumber,graveyardId,latitude,longitude\nA-1,1,24.0,67.0".getBytes());
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/admin/graves/import")
+                        .file(file)
+                        .param("superAdminPassword", "SuperAdmin@123"))
+                .andExpect(status().isForbidden());
+    }
+
     @Test
     @WithMockUser(username = "admin-test@example.com", roles = {"ADMIN"})
-    public void getGraveyards_SuccessForAdmin() throws Exception {
-        when(rememberMeRepository.findAll()).thenReturn(List.of(mockRememberMe));
+    public void importGraves_SuccessForAdmin() throws Exception {
+        org.springframework.mock.web.MockMultipartFile file = new org.springframework.mock.web.MockMultipartFile(
+                "file", "graves.csv", "text/csv", "serialNumber,graveyardId,latitude,longitude\nA-1,1,24.0,67.0".getBytes());
 
-        mockMvc.perform(get("/api/graveyards"))
+        com.rememberme.api.dto.response.GraveImportResponseDto mockResponse = com.rememberme.api.dto.response.GraveImportResponseDto.builder()
+                .totalRecords(1)
+                .successfulRecords(1)
+                .failedRecords(0)
+                .errors(List.of())
+                .build();
+
+        when(graveImportService.importGravesFromCsv(any(), eq("SuperAdmin@123"), eq("admin-test@example.com")))
+                .thenReturn(mockResponse);
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/admin/graves/import")
+                        .file(file)
+                        .param("superAdminPassword", "SuperAdmin@123"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.totalRecords").value(1))
+                .andExpect(jsonPath("$.data.successfulRecords").value(1))
+                .andExpect(jsonPath("$.data.failedRecords").value(0));
     }
 }
+
