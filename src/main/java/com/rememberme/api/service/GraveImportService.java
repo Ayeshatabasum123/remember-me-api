@@ -37,10 +37,7 @@ import java.util.*;
 @Slf4j
 public class GraveImportService {
 
-    private static final DateTimeFormatter STRICT_SLASH_FORMATTER = DateTimeFormatter.ofPattern("dd/MM/uuuu")
-            .withResolverStyle(ResolverStyle.STRICT);
-
-    private static final DateTimeFormatter STRICT_HYPHEN_FORMATTER = DateTimeFormatter.ofPattern("dd-MM-uuuu")
+    private static final DateTimeFormatter STRICT_DD_MM_YYYY = DateTimeFormatter.ofPattern("dd/MM/uuuu")
             .withResolverStyle(ResolverStyle.STRICT);
 
     private final GraveRepository graveRepository;
@@ -67,6 +64,7 @@ public class GraveImportService {
         private String deceasedName;
         private LocalDate dateOfBirth;
         private LocalDate dateOfDeath;
+        private String biography;
         private String section;
         private String row;
         private Double locationAccuracy;
@@ -220,6 +218,7 @@ public class GraveImportService {
                     .fullName(row.getDeceasedName())
                     .dateOfBirth(row.getDateOfBirth())
                     .dateOfDeath(row.getDateOfDeath())
+                    .biography(row.getBiography())
                     .gender(row.getGender())
                     .photoUrl(row.getPhotoUrl())
                     .grave(grave)
@@ -302,6 +301,7 @@ public class GraveImportService {
         String deceasedName = getColumnValue(columns, headerIndexMap, "deceasedname");
         String dobStr = getColumnValue(columns, headerIndexMap, "dateofbirth");
         String dodStr = getColumnValue(columns, headerIndexMap, "dateofdeath");
+        String biography = getColumnValue(columns, headerIndexMap, "biography");
 
         // Optional additional fields
         String section = getColumnValue(columns, headerIndexMap, "section");
@@ -381,7 +381,7 @@ public class GraveImportService {
             return;
         }
 
-        // 7. Validate dateOfBirth (DD/MM/YYYY or DD-MM-YYYY format)
+        // 7. Validate dateOfBirth (DD/MM/YYYY format only)
         LocalDate dateOfBirth;
         try {
             dateOfBirth = parseStrictDate(dobStr, "Date of birth");
@@ -390,7 +390,7 @@ public class GraveImportService {
             return;
         }
 
-        // 8. Validate dateOfDeath (DD/MM/YYYY or DD-MM-YYYY format)
+        // 8. Validate dateOfDeath (DD/MM/YYYY format only)
         LocalDate dateOfDeath;
         try {
             dateOfDeath = parseStrictDate(dodStr, "Date of death");
@@ -401,6 +401,17 @@ public class GraveImportService {
 
         if (dateOfDeath.isBefore(dateOfBirth)) {
             errors.add(new GraveImportErrorDto(rowNumber, "Date of death cannot be earlier than date of birth."));
+            return;
+        }
+
+        // 9. Validate biography (required, <= 200 characters)
+        if (biography == null || biography.trim().isEmpty()) {
+            errors.add(new GraveImportErrorDto(rowNumber, "Biography is required."));
+            return;
+        }
+        biography = biography.trim();
+        if (biography.length() > 200) {
+            errors.add(new GraveImportErrorDto(rowNumber, "Biography must not exceed 200 characters."));
             return;
         }
 
@@ -458,6 +469,7 @@ public class GraveImportService {
                 .deceasedName(deceasedName)
                 .dateOfBirth(dateOfBirth)
                 .dateOfDeath(dateOfDeath)
+                .biography(biography)
                 .section(section != null && !section.trim().isEmpty() ? section.trim() : null)
                 .row(row != null && !row.trim().isEmpty() ? row.trim() : null)
                 .locationAccuracy(locationAccuracy)
@@ -474,23 +486,15 @@ public class GraveImportService {
             throw new IllegalArgumentException(fieldDisplayName + " is required.");
         }
         String clean = dateStr.trim();
-        if (clean.matches("^\\d{2}/\\d{2}/\\d{4}$")) {
-            try {
-                return LocalDate.parse(clean, STRICT_SLASH_FORMATTER);
-            } catch (DateTimeParseException e) {
-                throw new IllegalArgumentException(fieldDisplayName + " must be in DD/MM/YYYY or DD-MM-YYYY format.");
-            }
-        } else if (clean.matches("^\\d{2}-\\d{2}-\\d{4}$")) {
-            try {
-                return LocalDate.parse(clean, STRICT_HYPHEN_FORMATTER);
-            } catch (DateTimeParseException e) {
-                throw new IllegalArgumentException(fieldDisplayName + " must be in DD/MM/YYYY or DD-MM-YYYY format.");
-            }
-        } else {
-            throw new IllegalArgumentException(fieldDisplayName + " must be in DD/MM/YYYY or DD-MM-YYYY format.");
+        if (!clean.matches("^\\d{2}/\\d{2}/\\d{4}$")) {
+            throw new IllegalArgumentException(fieldDisplayName + " must be a valid date in DD/MM/YYYY format.");
+        }
+        try {
+            return LocalDate.parse(clean, STRICT_DD_MM_YYYY);
+        } catch (DateTimeParseException e) {
+            throw new IllegalArgumentException(fieldDisplayName + " must be a valid date in DD/MM/YYYY format.");
         }
     }
-
 
     private void validateHeaders(Map<String, Integer> headerIndexMap) {
         List<String> missing = new ArrayList<>();
@@ -502,6 +506,7 @@ public class GraveImportService {
         if (!headerIndexMap.containsKey("deceasedname")) missing.add("deceasedName");
         if (!headerIndexMap.containsKey("dateofbirth")) missing.add("dateOfBirth");
         if (!headerIndexMap.containsKey("dateofdeath")) missing.add("dateOfDeath");
+        if (!headerIndexMap.containsKey("biography")) missing.add("biography");
 
         if (!missing.isEmpty()) {
             throw new ApiException("CSV is missing required column headers: " + String.join(", ", missing), HttpStatus.BAD_REQUEST);
@@ -535,6 +540,8 @@ public class GraveImportService {
                 map.put("dateofbirth", i);
             } else if (normalized.equals("dateofdeath") || normalized.equals("dod") || normalized.equals("deathdate") || normalized.equals("died")) {
                 map.put("dateofdeath", i);
+            } else if (normalized.equals("biography") || normalized.equals("bio") || normalized.equals("description")) {
+                map.put("biography", i);
             } else if (normalized.equals("section") || normalized.equals("block") || normalized.equals("sec")) {
                 map.put("section", i);
             } else if (normalized.equals("row") || normalized.equals("rownumber") || normalized.equals("rowno")) {

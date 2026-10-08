@@ -30,6 +30,9 @@ public class DeceasedPerson {
 
     private LocalDate dateOfDeath;
 
+    @Column(columnDefinition = "TEXT")
+    private String biography;
+
     @Enumerated(EnumType.STRING)
     private Gender gender;
 
