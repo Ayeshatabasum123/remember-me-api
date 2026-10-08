@@ -75,10 +75,13 @@ public class GraveImportServiceTest {
     }
 
     @Test
-    public void importGraves_ValidRow_SuccessWithDDMMYYYYSlashFormat() {
+    public void importGraves_ValidRow_SuccessWithBothDateFormats() {
+        // Tests all 4 combinations: (slash/slash), (hyphen/hyphen), (slash/hyphen), (hyphen/slash)
         String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath\n" +
                 "1,Lincoln Tomb,1,39.8203,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865\n" +
-                "2,Lincoln Tomb,2,39.8204,-89.6539,Alan Turing,23/06/1912,07/06/1954\n";
+                "2,Lincoln Tomb,2,39.8204,-89.6539,Alan Turing,23-06-1912,07-06-1954\n" +
+                "3,Lincoln Tomb,3,39.8205,-89.6540,Person Three,23/06/1912,07-06-1954\n" +
+                "4,Lincoln Tomb,4,39.8206,-89.6541,Person Four,23-06-1912,07/06/1954\n";
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
@@ -87,29 +90,43 @@ public class GraveImportServiceTest {
         when(rememberMeRepository.findFirstByNameIgnoreCase("Lincoln Tomb")).thenReturn(Optional.of(mockGraveyard));
         when(graveRepository.existsByRememberMeIdAndGraveNumberIgnoreCase(1L, "1")).thenReturn(false);
         when(graveRepository.existsByRememberMeIdAndGraveNumberIgnoreCase(1L, "2")).thenReturn(false);
+        when(graveRepository.existsByRememberMeIdAndGraveNumberIgnoreCase(1L, "3")).thenReturn(false);
+        when(graveRepository.existsByRememberMeIdAndGraveNumberIgnoreCase(1L, "4")).thenReturn(false);
 
         when(graveRepository.save(any(Grave.class))).thenAnswer(i -> i.getArgument(0));
 
         GraveImportResponseDto response = graveImportService.importGravesFromCsv(file, "SuperAdmin@123", "superadmin@example.com");
 
         assertNotNull(response);
-        assertEquals(2, response.getTotalRecords());
-        assertEquals(2, response.getSuccessfulRecords());
+        assertEquals(4, response.getTotalRecords());
+        assertEquals(4, response.getSuccessfulRecords());
         assertEquals(0, response.getFailedRecords());
         assertTrue(response.getErrors().isEmpty());
 
-        // Verify deceased person creation with parsed DD/MM/YYYY dates
+        // Verify deceased persons creation with correctly parsed dates
         ArgumentCaptor<DeceasedPerson> deceasedCaptor = ArgumentCaptor.forClass(DeceasedPerson.class);
-        verify(deceasedPersonRepository, times(2)).save(deceasedCaptor.capture());
+        verify(deceasedPersonRepository, times(4)).save(deceasedCaptor.capture());
         List<DeceasedPerson> savedPersons = deceasedCaptor.getAllValues();
 
+        // Row 1 (slash/slash)
         assertEquals("Abraham Lincoln", savedPersons.get(0).getFullName());
         assertEquals(LocalDate.of(1809, 2, 12), savedPersons.get(0).getDateOfBirth());
         assertEquals(LocalDate.of(1865, 4, 15), savedPersons.get(0).getDateOfDeath());
 
+        // Row 2 (hyphen/hyphen)
         assertEquals("Alan Turing", savedPersons.get(1).getFullName());
         assertEquals(LocalDate.of(1912, 6, 23), savedPersons.get(1).getDateOfBirth());
         assertEquals(LocalDate.of(1954, 6, 7), savedPersons.get(1).getDateOfDeath());
+
+        // Row 3 (slash/hyphen)
+        assertEquals("Person Three", savedPersons.get(2).getFullName());
+        assertEquals(LocalDate.of(1912, 6, 23), savedPersons.get(2).getDateOfBirth());
+        assertEquals(LocalDate.of(1954, 6, 7), savedPersons.get(2).getDateOfDeath());
+
+        // Row 4 (hyphen/slash)
+        assertEquals("Person Four", savedPersons.get(3).getFullName());
+        assertEquals(LocalDate.of(1912, 6, 23), savedPersons.get(3).getDateOfBirth());
+        assertEquals(LocalDate.of(1954, 6, 7), savedPersons.get(3).getDateOfDeath());
     }
 
     @Test
@@ -207,26 +224,46 @@ public class GraveImportServiceTest {
                 "1,Lincoln Tomb,1,39.8203,-89.6538,Abraham Lincoln,1809-02-12,15/04/1865\n" +   // Hyphenated YYYY-MM-DD rejected
                 "2,Lincoln Tomb,2,39.8203,-89.6538,Abraham Lincoln,12021809,15/04/1865\n" +     // DDMMYYYY without slashes rejected
                 "3,Lincoln Tomb,3,39.8203,-89.6538,Abraham Lincoln,31/02/2000,15/04/1865\n" +   // 31 Feb rejected
-                "4,Lincoln Tomb,4,39.8203,-89.6538,Abraham Lincoln,32/01/2000,15/04/1865\n" +   // 32 Jan rejected
-                "5,Lincoln Tomb,5,39.8203,-89.6538,Abraham Lincoln,00/00/0000,15/04/1865\n";    // 00/00/0000 rejected
+                "4,Lincoln Tomb,4,39.8203,-89.6538,Abraham Lincoln,32-01-2000,15/04/1865\n" +   // 32 Jan rejected
+                "5,Lincoln Tomb,5,39.8203,-89.6538,Abraham Lincoln,00/00/0000,15/04/1865\n" +   // 00/00/0000 rejected
+                "6,Lincoln Tomb,6,39.8203,-89.6538,Abraham Lincoln,29/02/2021,15/04/1865\n" +   // 29 Feb non-leap rejected
+                "7,Lincoln Tomb,7,39.8203,-89.6538,Abraham Lincoln,23/06-1912,15/04/1865\n";    // mixed delimiter rejected
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
 
         GraveImportResponseDto response = graveImportService.importGravesFromCsv(file, "SuperAdmin@123", "superadmin@example.com");
 
-        assertEquals(5, response.getTotalRecords());
+        assertEquals(7, response.getTotalRecords());
         assertEquals(0, response.getSuccessfulRecords());
-        assertEquals(5, response.getFailedRecords());
-        for (int i = 0; i < 5; i++) {
-            assertEquals("Date of birth must be a valid date in DD/MM/YYYY format.", response.getErrors().get(i).getMessage());
+        assertEquals(7, response.getFailedRecords());
+        for (int i = 0; i < 7; i++) {
+            assertEquals("Date of birth must be in DD/MM/YYYY or DD-MM-YYYY format.", response.getErrors().get(i).getMessage());
         }
+    }
+
+    @Test
+    public void importGraves_InvalidDateOfDeathFormat_RejectsRow() {
+        String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath\n" +
+                "1,Lincoln Tomb,1,39.8203,-89.6538,Abraham Lincoln,12/02/1809,31/02/1865\n" +
+                "2,Lincoln Tomb,2,39.8203,-89.6538,Abraham Lincoln,12-02-1809,1865-04-15\n";
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
+
+        GraveImportResponseDto response = graveImportService.importGravesFromCsv(file, "SuperAdmin@123", "superadmin@example.com");
+
+        assertEquals(2, response.getTotalRecords());
+        assertEquals(0, response.getSuccessfulRecords());
+        assertEquals(2, response.getFailedRecords());
+        assertEquals("Date of death must be in DD/MM/YYYY or DD-MM-YYYY format.", response.getErrors().get(0).getMessage());
+        assertEquals("Date of death must be in DD/MM/YYYY or DD-MM-YYYY format.", response.getErrors().get(1).getMessage());
     }
 
     @Test
     public void importGraves_DateOfDeathEarlierThanDateOfBirth_RejectsRow() {
         String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath\n" +
-                "1,Lincoln Tomb,1,39.8203,-89.6538,Abraham Lincoln,15/04/1865,12/02/1809\n";
+                "1,Lincoln Tomb,1,39.8203,-89.6538,Abraham Lincoln,15/04/1865,12-02-1809\n";
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));

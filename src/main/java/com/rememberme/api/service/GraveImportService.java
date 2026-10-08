@@ -37,7 +37,10 @@ import java.util.*;
 @Slf4j
 public class GraveImportService {
 
-    private static final DateTimeFormatter STRICT_DD_MM_YYYY = DateTimeFormatter.ofPattern("dd/MM/uuuu")
+    private static final DateTimeFormatter STRICT_SLASH_FORMATTER = DateTimeFormatter.ofPattern("dd/MM/uuuu")
+            .withResolverStyle(ResolverStyle.STRICT);
+
+    private static final DateTimeFormatter STRICT_HYPHEN_FORMATTER = DateTimeFormatter.ofPattern("dd-MM-uuuu")
             .withResolverStyle(ResolverStyle.STRICT);
 
     private final GraveRepository graveRepository;
@@ -378,19 +381,19 @@ public class GraveImportService {
             return;
         }
 
-        // 7. Validate dateOfBirth (DDMMYYYY format)
+        // 7. Validate dateOfBirth (DD/MM/YYYY or DD-MM-YYYY format)
         LocalDate dateOfBirth;
         try {
-            dateOfBirth = parseStrictDDMMYYYY(dobStr, "Date of birth");
+            dateOfBirth = parseStrictDate(dobStr, "Date of birth");
         } catch (IllegalArgumentException e) {
             errors.add(new GraveImportErrorDto(rowNumber, e.getMessage()));
             return;
         }
 
-        // 8. Validate dateOfDeath (DDMMYYYY format)
+        // 8. Validate dateOfDeath (DD/MM/YYYY or DD-MM-YYYY format)
         LocalDate dateOfDeath;
         try {
-            dateOfDeath = parseStrictDDMMYYYY(dodStr, "Date of death");
+            dateOfDeath = parseStrictDate(dodStr, "Date of death");
         } catch (IllegalArgumentException e) {
             errors.add(new GraveImportErrorDto(rowNumber, e.getMessage()));
             return;
@@ -466,18 +469,25 @@ public class GraveImportService {
         validRows.add(parsed);
     }
 
-    private LocalDate parseStrictDDMMYYYY(String dateStr, String fieldDisplayName) {
+    private LocalDate parseStrictDate(String dateStr, String fieldDisplayName) {
         if (dateStr == null || dateStr.trim().isEmpty()) {
             throw new IllegalArgumentException(fieldDisplayName + " is required.");
         }
         String clean = dateStr.trim();
-        if (!clean.matches("^\\d{2}/\\d{2}/\\d{4}$")) {
-            throw new IllegalArgumentException(fieldDisplayName + " must be a valid date in DD/MM/YYYY format.");
-        }
-        try {
-            return LocalDate.parse(clean, STRICT_DD_MM_YYYY);
-        } catch (DateTimeParseException e) {
-            throw new IllegalArgumentException(fieldDisplayName + " must be a valid date in DD/MM/YYYY format.");
+        if (clean.matches("^\\d{2}/\\d{2}/\\d{4}$")) {
+            try {
+                return LocalDate.parse(clean, STRICT_SLASH_FORMATTER);
+            } catch (DateTimeParseException e) {
+                throw new IllegalArgumentException(fieldDisplayName + " must be in DD/MM/YYYY or DD-MM-YYYY format.");
+            }
+        } else if (clean.matches("^\\d{2}-\\d{2}-\\d{4}$")) {
+            try {
+                return LocalDate.parse(clean, STRICT_HYPHEN_FORMATTER);
+            } catch (DateTimeParseException e) {
+                throw new IllegalArgumentException(fieldDisplayName + " must be in DD/MM/YYYY or DD-MM-YYYY format.");
+            }
+        } else {
+            throw new IllegalArgumentException(fieldDisplayName + " must be in DD/MM/YYYY or DD-MM-YYYY format.");
         }
     }
 
