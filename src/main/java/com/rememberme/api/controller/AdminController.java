@@ -67,7 +67,7 @@ public class AdminController {
     @PostMapping(value = "/graves/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Operation(
             summary = "Bulk import grave/cemetery records from a CSV file",
-            description = "Validates and imports grave records from a CSV file. Requires Admin JWT authentication and Super Admin password verification.",
+            description = "Validates and imports grave records from a CSV file. Supports dateOfBirth and dateOfDeath in both DD/MM/YYYY and DD-MM-YYYY formats. Requires Admin JWT authentication and Super Admin password verification.",
             security = @SecurityRequirement(name = "bearerAuth")
     )
     public ApiResponse<GraveImportResponseDto> importGraves(
