@@ -321,8 +321,8 @@ public class GraveImportService {
             return;
         }
         cemeteryName = cemeteryName.trim();
-        if (cemeteryName.length() > 20) {
-            errors.add(new GraveImportErrorDto(rowNumber, "Cemetery name must not exceed 20 characters."));
+        if (cemeteryName.length() > 100) {
+            errors.add(new GraveImportErrorDto(rowNumber, "Cemetery name must be 100 characters or fewer."));
             return;
         }
 
@@ -373,8 +373,8 @@ public class GraveImportService {
             return;
         }
         deceasedName = deceasedName.trim();
-        if (deceasedName.length() > 20) {
-            errors.add(new GraveImportErrorDto(rowNumber, "Deceased name must not exceed 20 characters."));
+        if (deceasedName.length() > 100) {
+            errors.add(new GraveImportErrorDto(rowNumber, "Deceased name must be 100 characters or fewer."));
             return;
         }
 

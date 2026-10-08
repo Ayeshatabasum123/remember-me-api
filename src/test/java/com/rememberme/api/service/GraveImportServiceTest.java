@@ -114,8 +114,9 @@ public class GraveImportServiceTest {
 
     @Test
     public void importGraves_CemeteryNameTooLong_RejectsRow() {
+        String longCemeteryName = "C".repeat(101);
         String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath\n" +
-                "1,This Cemetery Name Is Way Too Long Beyond Twenty,1,39.8203,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865\n";
+                "1," + longCemeteryName + ",1,39.8203,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865\n";
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
@@ -125,13 +126,14 @@ public class GraveImportServiceTest {
         assertEquals(1, response.getTotalRecords());
         assertEquals(0, response.getSuccessfulRecords());
         assertEquals(1, response.getFailedRecords());
-        assertEquals("Cemetery name must not exceed 20 characters.", response.getErrors().get(0).getMessage());
+        assertEquals("Cemetery name must be 100 characters or fewer.", response.getErrors().get(0).getMessage());
     }
 
     @Test
     public void importGraves_DeceasedNameTooLong_RejectsRow() {
+        String longDeceasedName = "D".repeat(101);
         String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath\n" +
-                "1,Lincoln Tomb,1,39.8203,-89.6538,This Deceased Name Is Extremely Long,12/02/1809,15/04/1865\n";
+                "1,Lincoln Tomb,1,39.8203,-89.6538," + longDeceasedName + ",12/02/1809,15/04/1865\n";
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
@@ -141,7 +143,42 @@ public class GraveImportServiceTest {
         assertEquals(1, response.getTotalRecords());
         assertEquals(0, response.getSuccessfulRecords());
         assertEquals(1, response.getFailedRecords());
-        assertEquals("Deceased name must not exceed 20 characters.", response.getErrors().get(0).getMessage());
+        assertEquals("Deceased name must be 100 characters or fewer.", response.getErrors().get(0).getMessage());
+    }
+
+    @Test
+    public void importGraves_CemeteryAndDeceasedNameExact100Chars_Success() {
+        String exact100CemeteryName = "C".repeat(100);
+        String exact100DeceasedName = "D".repeat(100);
+        String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath\n" +
+                "1," + exact100CemeteryName + ",1,39.8203,-89.6538," + exact100DeceasedName + ",12/02/1809,15/04/1865\n";
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
+
+        RememberMe graveyard100 = RememberMe.builder()
+                .id(2L)
+                .name(exact100CemeteryName)
+                .latitude(39.8203)
+                .longitude(-89.6538)
+                .build();
+
+        when(userRepository.findByEmail("superadmin@example.com")).thenReturn(Optional.of(mockAdminUser));
+        when(rememberMeRepository.findFirstByNameIgnoreCase(exact100CemeteryName)).thenReturn(Optional.of(graveyard100));
+        when(graveRepository.existsByRememberMeIdAndGraveNumberIgnoreCase(2L, "1")).thenReturn(false);
+        when(graveRepository.save(any(Grave.class))).thenAnswer(i -> i.getArgument(0));
+
+        GraveImportResponseDto response = graveImportService.importGravesFromCsv(file, "SuperAdmin@123", "superadmin@example.com");
+
+        assertNotNull(response);
+        assertEquals(1, response.getTotalRecords());
+        assertEquals(1, response.getSuccessfulRecords());
+        assertEquals(0, response.getFailedRecords());
+        assertTrue(response.getErrors().isEmpty());
+
+        ArgumentCaptor<DeceasedPerson> deceasedCaptor = ArgumentCaptor.forClass(DeceasedPerson.class);
+        verify(deceasedPersonRepository).save(deceasedCaptor.capture());
+        assertEquals(exact100DeceasedName, deceasedCaptor.getValue().getFullName());
     }
 
     @Test
