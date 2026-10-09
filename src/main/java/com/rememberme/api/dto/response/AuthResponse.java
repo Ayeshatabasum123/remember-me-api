@@ -15,4 +15,16 @@ public class AuthResponse {
     private String email;
     private String fullName;
     private String role;
+    private UserSummary user;
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class UserSummary {
+        private Long id;
+        private String fullName;
+        private String email;
+        private String role;
+    }
 }

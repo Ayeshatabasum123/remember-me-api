@@ -89,6 +89,42 @@ public class AuthServiceTest {
         assertEquals("admin-test@example.com", response.getEmail());
         assertEquals("ADMIN", response.getRole());
         assertEquals("adminJwtToken", response.getToken());
+        assertNotNull(response.getUser());
+        assertEquals(1L, response.getUser().getId());
+        assertEquals("Admin Test", response.getUser().getFullName());
+        assertEquals("admin-test@example.com", response.getUser().getEmail());
+        assertEquals("ADMIN", response.getUser().getRole());
+    }
+
+    @Test
+    public void login_NormalUserSuccess() {
+        User normalUser = User.builder()
+                .id(2L)
+                .fullName("Regular User")
+                .email("user@example.com")
+                .password("encodedUserPassword")
+                .role(User.Role.USER)
+                .build();
+
+        LoginRequest userLoginRequest = new LoginRequest();
+        userLoginRequest.setEmail("user@example.com");
+        userLoginRequest.setPassword("User@123");
+
+        when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(normalUser));
+        when(passwordEncoder.matches("User@123", "encodedUserPassword")).thenReturn(true);
+        when(jwtUtil.generateToken("user@example.com")).thenReturn("userJwtToken");
+
+        AuthResponse response = authService.login(userLoginRequest);
+
+        assertNotNull(response);
+        assertEquals("user@example.com", response.getEmail());
+        assertEquals("USER", response.getRole());
+        assertEquals("userJwtToken", response.getToken());
+        assertNotNull(response.getUser());
+        assertEquals(2L, response.getUser().getId());
+        assertEquals("Regular User", response.getUser().getFullName());
+        assertEquals("user@example.com", response.getUser().getEmail());
+        assertEquals("USER", response.getUser().getRole());
     }
 
     @Test

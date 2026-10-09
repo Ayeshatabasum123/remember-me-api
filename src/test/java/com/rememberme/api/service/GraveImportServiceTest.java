@@ -69,7 +69,7 @@ public class GraveImportServiceTest {
         mockAdminUser = User.builder()
                 .id(1L)
                 .email("superadmin@example.com")
-                .role(User.Role.SUPER_ADMIN)
+                .role(User.Role.ADMIN)
                 .password("encodedSuperPassword")
                 .build();
     }
@@ -364,19 +364,25 @@ public class GraveImportServiceTest {
     }
 
     @Test
-    public void importGraves_InvalidSuperAdminPassword_ThrowsApiException() {
+    public void importGraves_NonAdminUser_ThrowsForbidden() {
         String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
                 "1,Lincoln Tomb,1,39.8203,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865,President\n";
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
 
-        when(userRepository.findByEmail("admin@example.com")).thenReturn(Optional.empty());
-        when(userRepository.findAll()).thenReturn(List.of());
+        User normalUser = User.builder()
+                .id(2L)
+                .email("user@example.com")
+                .role(User.Role.USER)
+                .build();
+
+        when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(normalUser));
 
         ApiException ex = assertThrows(ApiException.class, () ->
-                graveImportService.importGraves(file, "WrongPassword", "admin@example.com"));
+                graveImportService.importGraves(file, "user@example.com"));
 
-        assertTrue(ex.getMessage().contains("Invalid Super Admin password"));
+        assertEquals(org.springframework.http.HttpStatus.FORBIDDEN, ex.getStatus());
+        assertTrue(ex.getMessage().contains("Admin role required"));
     }
 
     @Test

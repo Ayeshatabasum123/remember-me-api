@@ -155,6 +155,12 @@ public class AdminSecurityControllerTest {
     }
 
     @Test
+    public void adminEndpoint_UnauthorizedWithoutToken() throws Exception {
+        mockMvc.perform(put("/api/admin/rememberMes/1/approve"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     @WithMockUser(username = "admin-test@example.com", roles = {"ADMIN"})
     public void importGraves_SuccessForAdmin() throws Exception {
         org.springframework.mock.web.MockMultipartFile file = new org.springframework.mock.web.MockMultipartFile(
@@ -167,12 +173,11 @@ public class AdminSecurityControllerTest {
                 .errors(List.of())
                 .build();
 
-        when(graveImportService.importGraves(any(), eq("SuperAdmin@123"), eq("admin-test@example.com")))
+        when(graveImportService.importGraves(any(), eq("admin-test@example.com")))
                 .thenReturn(mockResponse);
 
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/admin/graves/import")
-                        .file(file)
-                        .param("superAdminPassword", "SuperAdmin@123"))
+                        .file(file))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.totalRecords").value(1))

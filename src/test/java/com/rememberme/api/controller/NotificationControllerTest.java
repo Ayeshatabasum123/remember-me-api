@@ -105,7 +105,7 @@ class NotificationControllerTest {
         mockMvc.perform(post("/api/notifications/token")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"fcmToken\":\"token\"}"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
 
         verify(userRepository, never()).save(any(User.class));
     }

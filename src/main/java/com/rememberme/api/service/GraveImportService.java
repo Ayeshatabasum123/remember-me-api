@@ -83,54 +83,18 @@ public class GraveImportService {
     }
 
     /**
-     * Verifies the super admin password against configured credentials,
-     * super admin users in the database, and the authenticated user.
-     */
-    public void verifySuperAdminPassword(String superAdminPassword, String authenticatedEmail) {
-        if (superAdminPassword == null || superAdminPassword.trim().isEmpty()) {
-            throw new ApiException("Super Admin password is required", HttpStatus.BAD_REQUEST);
-        }
-
-        // 1. Check against application properties
-        if (superAdminPassword.equals(superAdminPasswordConfig) || superAdminPassword.equals(adminPasswordConfig)) {
-            return;
-        }
-
-        // 2. Check against the currently authenticated user if present
-        if (authenticatedEmail != null) {
-            Optional<User> authUserOpt = userRepository.findByEmail(authenticatedEmail);
-            if (authUserOpt.isPresent()) {
-                User authUser = authUserOpt.get();
-                if ((authUser.getRole() == User.Role.SUPER_ADMIN || authUser.getRole() == User.Role.ADMIN)
-                        && passwordEncoder.matches(superAdminPassword, authUser.getPassword())) {
-                    return;
-                }
-            }
-        }
-
-        // 3. Check against any user in database with SUPER_ADMIN role
-        List<User> allUsers = userRepository.findAll();
-        for (User user : allUsers) {
-            if (user.getRole() == User.Role.SUPER_ADMIN && passwordEncoder.matches(superAdminPassword, user.getPassword())) {
-                return;
-            }
-        }
-
-        throw new ApiException("Invalid Super Admin password", HttpStatus.UNAUTHORIZED);
-    }
-
-    /**
      * Imports grave records and associated cemetery / deceased person data from a multipart CSV or Excel (.xls, .xlsx) file.
+     * Protected by ADMIN role verification.
      */
     @Transactional
-    public GraveImportResponseDto importGraves(MultipartFile file, String superAdminPassword, String authenticatedEmail) {
-        // Step 1: Verify Super Admin password
-        verifySuperAdminPassword(superAdminPassword, authenticatedEmail);
-
+    public GraveImportResponseDto importGraves(MultipartFile file, String authenticatedEmail) {
         // Fetch authenticated admin user entity if available
         User adminUser = authenticatedEmail != null ? userRepository.findByEmail(authenticatedEmail).orElse(null) : null;
+        if (adminUser != null && adminUser.getRole() != User.Role.ADMIN) {
+            throw new ApiException("Access Denied: Admin role required", HttpStatus.FORBIDDEN);
+        }
 
-        // Step 2: Validate file existence and extension
+        // Validate file existence and extension
         if (file == null || file.isEmpty()) {
             throw new ApiException("CSV file is required and cannot be empty", HttpStatus.BAD_REQUEST);
         }
@@ -155,8 +119,16 @@ public class GraveImportService {
             parseExcelFile(file, errors, validRows, seenInFile);
         }
 
-        // Step 3: Process valid rows -> resolve or auto-create cemeteries -> save graves & deceased persons
+        // Process valid rows -> resolve or auto-create cemeteries -> save graves & deceased persons
         return processValidRowsAndSave(validRows, errors, adminUser, isCsv ? "CSV" : "Excel");
+    }
+
+    /**
+     * Overloaded method for backward compatibility with existing callers/tests.
+     */
+    @Transactional
+    public GraveImportResponseDto importGraves(MultipartFile file, String superAdminPassword, String authenticatedEmail) {
+        return importGraves(file, authenticatedEmail);
     }
 
     /**
@@ -164,7 +136,7 @@ public class GraveImportService {
      */
     @Transactional
     public GraveImportResponseDto importGravesFromCsv(MultipartFile file, String superAdminPassword, String authenticatedEmail) {
-        return importGraves(file, superAdminPassword, authenticatedEmail);
+        return importGraves(file, authenticatedEmail);
     }
 
     private void parseCsvFile(MultipartFile file,

@@ -1,5 +1,6 @@
 package com.rememberme.api.entity;
-
+ 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -29,6 +30,7 @@ public class User {
     private String phone;
 
     @Column(nullable = false)
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String password;
 
     private String photoUrl;
@@ -39,7 +41,8 @@ public class User {
     private String fcmToken;
 
     @Enumerated(EnumType.STRING)
-    @org.hibernate.annotations.Check(constraints = "role IN ('USER', 'ADMIN', 'GRAVEYARD_ADMIN', 'SUPER_ADMIN')")
+    @org.hibernate.annotations.Check(constraints = "role IN ('USER', 'ADMIN')")
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private Role role;
 
     private boolean emailVerified;
@@ -50,6 +53,6 @@ public class User {
     private LocalDateTime updatedAt;
 
     public enum Role {
-        USER, ADMIN, GRAVEYARD_ADMIN, SUPER_ADMIN
+        USER, ADMIN
     }
 }
