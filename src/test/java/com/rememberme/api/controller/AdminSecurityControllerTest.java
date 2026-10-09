@@ -167,7 +167,7 @@ public class AdminSecurityControllerTest {
                 .errors(List.of())
                 .build();
 
-        when(graveImportService.importGravesFromCsv(any(), eq("SuperAdmin@123"), eq("admin-test@example.com")))
+        when(graveImportService.importGraves(any(), eq("SuperAdmin@123"), eq("admin-test@example.com")))
                 .thenReturn(mockResponse);
 
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/admin/graves/import")

@@ -66,12 +66,12 @@ public class AdminController {
 
     @PostMapping(value = "/graves/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Operation(
-            summary = "Bulk import grave/cemetery records from a CSV file",
-            description = "Validates and imports grave records from a CSV file. Supports dateOfBirth and dateOfDeath in both DD/MM/YYYY and DD-MM-YYYY formats. Required columns: serialNumber, cemeteryName, graveNumber, latitude, longitude, deceasedName, dateOfBirth, dateOfDeath, biography (max 200 chars). Requires Admin JWT authentication and Super Admin password verification.",
+            summary = "Bulk import grave/cemetery records from a CSV or Excel file",
+            description = "Validates and imports grave records from a CSV (.csv) or Excel (.xls, .xlsx) file. Supports dateOfBirth and dateOfDeath in both DD/MM/YYYY and DD-MM-YYYY formats, as well as native Excel date cells. Required columns: serialNumber, cemeteryName, graveNumber, latitude, longitude, deceasedName, dateOfBirth, dateOfDeath, biography (max 200 chars). Requires Admin JWT authentication and Super Admin password verification.",
             security = @SecurityRequirement(name = "bearerAuth")
     )
     public ApiResponse<GraveImportResponseDto> importGraves(
-            @Parameter(description = "CSV file containing grave data", required = true,
+            @Parameter(description = "CSV or Excel file (.csv, .xls, .xlsx) containing grave data", required = true,
                     content = @Content(mediaType = MediaType.MULTIPART_FORM_DATA_VALUE,
                             schema = @Schema(type = "string", format = "binary")))
             @RequestParam("file") MultipartFile file,
@@ -79,7 +79,7 @@ public class AdminController {
             @RequestParam("superAdminPassword") String superAdminPassword,
             Principal principal) {
         String email = principal != null ? principal.getName() : null;
-        GraveImportResponseDto result = graveImportService.importGravesFromCsv(file, superAdminPassword, email);
+        GraveImportResponseDto result = graveImportService.importGraves(file, superAdminPassword, email);
         return ApiResponse.success("Graves import completed: " + result.getSuccessfulRecords() + " successful, " + result.getFailedRecords() + " failed", result);
     }
 }

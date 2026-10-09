@@ -15,6 +15,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.poi.ss.usermodel.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -23,10 +24,13 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.BufferedReader;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.format.ResolverStyle;
@@ -42,6 +46,8 @@ public class GraveImportService {
 
     private static final DateTimeFormatter STRICT_HYPHEN_FORMATTER = DateTimeFormatter.ofPattern("dd-MM-uuuu")
             .withResolverStyle(ResolverStyle.STRICT);
+
+    private static final DateTimeFormatter OUTPUT_SLASH_FORMATTER = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private final GraveRepository graveRepository;
     private final RememberMeRepository rememberMeRepository;
@@ -114,10 +120,10 @@ public class GraveImportService {
     }
 
     /**
-     * Imports grave records and associated cemetery / deceased person data from a multipart CSV file.
+     * Imports grave records and associated cemetery / deceased person data from a multipart CSV or Excel (.xls, .xlsx) file.
      */
     @Transactional
-    public GraveImportResponseDto importGravesFromCsv(MultipartFile file, String superAdminPassword, String authenticatedEmail) {
+    public GraveImportResponseDto importGraves(MultipartFile file, String superAdminPassword, String authenticatedEmail) {
         // Step 1: Verify Super Admin password
         verifySuperAdminPassword(superAdminPassword, authenticatedEmail);
 
@@ -130,17 +136,41 @@ public class GraveImportService {
         }
 
         String originalFilename = file.getOriginalFilename();
-        if (originalFilename != null && !originalFilename.trim().isEmpty()) {
-            String lowerName = originalFilename.toLowerCase();
-            if (!lowerName.endsWith(".csv") && !lowerName.endsWith(".txt")) {
-                throw new ApiException("Invalid file format. Please upload a valid CSV file (.csv)", HttpStatus.BAD_REQUEST);
-            }
+        String lowerName = originalFilename != null ? originalFilename.toLowerCase().trim() : "";
+
+        boolean isCsv = lowerName.endsWith(".csv") || lowerName.endsWith(".txt");
+        boolean isExcel = lowerName.endsWith(".xls") || lowerName.endsWith(".xlsx");
+
+        if (!isCsv && !isExcel) {
+            throw new ApiException("Invalid file format. Please upload a valid CSV (.csv) or Excel (.xls, .xlsx) file", HttpStatus.BAD_REQUEST);
         }
 
         List<GraveImportErrorDto> errors = new ArrayList<>();
         List<ParsedGraveRow> validRows = new ArrayList<>();
-        Set<String> seenInCsv = new HashSet<>();
+        Set<String> seenInFile = new HashSet<>();
 
+        if (isCsv) {
+            parseCsvFile(file, errors, validRows, seenInFile);
+        } else {
+            parseExcelFile(file, errors, validRows, seenInFile);
+        }
+
+        // Step 3: Process valid rows -> resolve or auto-create cemeteries -> save graves & deceased persons
+        return processValidRowsAndSave(validRows, errors, adminUser, isCsv ? "CSV" : "Excel");
+    }
+
+    /**
+     * Preserves backward compatibility with CSV-specific endpoint/callers.
+     */
+    @Transactional
+    public GraveImportResponseDto importGravesFromCsv(MultipartFile file, String superAdminPassword, String authenticatedEmail) {
+        return importGraves(file, superAdminPassword, authenticatedEmail);
+    }
+
+    private void parseCsvFile(MultipartFile file,
+                              List<GraveImportErrorDto> errors,
+                              List<ParsedGraveRow> validRows,
+                              Set<String> seenInFile) {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
             String headerLine = reader.readLine();
             if (headerLine == null || headerLine.trim().isEmpty()) {
@@ -156,7 +186,7 @@ public class GraveImportService {
             Map<String, Integer> headerIndexMap = mapHeaders(headers);
 
             // Validate required headers
-            validateHeaders(headerIndexMap);
+            validateHeaders(headerIndexMap, "CSV");
 
             String line;
             int lineNumber = 1; // Row 1 was header
@@ -174,7 +204,7 @@ public class GraveImportService {
                     continue;
                 }
 
-                parseAndValidateRow(lineNumber, columns, headerIndexMap, errors, validRows, seenInCsv);
+                parseAndValidateRow(lineNumber, columns, headerIndexMap, errors, validRows, seenInFile, "CSV");
             }
 
         } catch (ApiException e) {
@@ -183,8 +213,183 @@ public class GraveImportService {
             log.error("Failed to parse CSV file", e);
             throw new ApiException("Failed to parse CSV file: " + e.getMessage(), HttpStatus.BAD_REQUEST);
         }
+    }
 
-        // Step 3: Process valid rows -> resolve or auto-create cemeteries -> save graves & deceased persons
+    private void parseExcelFile(MultipartFile file,
+                                List<GraveImportErrorDto> errors,
+                                List<ParsedGraveRow> validRows,
+                                Set<String> seenInFile) {
+        try (InputStream is = file.getInputStream();
+             Workbook workbook = WorkbookFactory.create(is)) {
+
+            if (workbook.getNumberOfSheets() == 0) {
+                throw new ApiException("Excel file contains no sheets", HttpStatus.BAD_REQUEST);
+            }
+
+            Sheet sheet = workbook.getSheetAt(0);
+            if (sheet == null || sheet.getPhysicalNumberOfRows() == 0) {
+                throw new ApiException("Excel file is empty or missing a valid header row", HttpStatus.BAD_REQUEST);
+            }
+
+            FormulaEvaluator evaluator = workbook.getCreationHelper().createFormulaEvaluator();
+            DataFormatter dataFormatter = new DataFormatter();
+
+            // Find first non-empty row to use as header
+            Row headerRow = null;
+            int firstRowNum = sheet.getFirstRowNum();
+            int lastRowNum = sheet.getLastRowNum();
+
+            for (int r = firstRowNum; r <= lastRowNum; r++) {
+                Row row = sheet.getRow(r);
+                if (row != null && !isExcelRowEmpty(row, evaluator, dataFormatter)) {
+                    headerRow = row;
+                    break;
+                }
+            }
+
+            if (headerRow == null) {
+                throw new ApiException("Excel file is empty or missing a valid header row", HttpStatus.BAD_REQUEST);
+            }
+
+            List<String> rawHeaders = new ArrayList<>();
+            int lastCellNum = headerRow.getLastCellNum();
+            for (int c = 0; c < lastCellNum; c++) {
+                Cell cell = headerRow.getCell(c, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
+                String cellVal = getExcelCellValueAsString(cell, evaluator, dataFormatter);
+                rawHeaders.add(cellVal != null ? cellVal.trim() : "");
+            }
+
+            Map<String, Integer> headerIndexMap = mapHeaders(rawHeaders);
+            validateHeaders(headerIndexMap, "Excel");
+
+            // Process subsequent rows
+            for (int r = headerRow.getRowNum() + 1; r <= lastRowNum; r++) {
+                int lineNumber = r + 1; // 1-based row index in Excel
+                Row row = sheet.getRow(r);
+                if (row == null || isExcelRowEmpty(row, evaluator, dataFormatter)) {
+                    continue;
+                }
+
+                List<String> columns = new ArrayList<>();
+                int maxCols = Math.max((int) row.getLastCellNum(), lastCellNum);
+                for (int c = 0; c < maxCols; c++) {
+                    Cell cell = row.getCell(c, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
+                    String cellVal = getExcelCellValueAsString(cell, evaluator, dataFormatter);
+                    columns.add(cellVal != null ? cellVal : "");
+                }
+
+                parseAndValidateRow(lineNumber, columns, headerIndexMap, errors, validRows, seenInFile, "Excel");
+            }
+
+        } catch (ApiException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Failed to parse Excel file", e);
+            throw new ApiException("Failed to parse Excel file: " + e.getMessage(), HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    private String getExcelCellValueAsString(Cell cell, FormulaEvaluator evaluator, DataFormatter dataFormatter) {
+        if (cell == null) {
+            return null;
+        }
+
+        CellType cellType = cell.getCellType();
+        if (cellType == CellType.FORMULA) {
+            try {
+                CellValue evaluated = evaluator.evaluate(cell);
+                if (evaluated == null) {
+                    return null;
+                }
+                cellType = evaluated.getCellType();
+                switch (cellType) {
+                    case NUMERIC:
+                        if (DateUtil.isCellDateFormatted(cell)) {
+                            return formatExcelDateCell(cell);
+                        }
+                        return formatNumericValue(evaluated.getNumberValue());
+                    case STRING:
+                        String s = evaluated.getStringValue();
+                        return s != null ? s.trim() : null;
+                    case BOOLEAN:
+                        return String.valueOf(evaluated.getBooleanValue());
+                    default:
+                        return null;
+                }
+            } catch (Exception e) {
+                return dataFormatter.formatCellValue(cell).trim();
+            }
+        }
+
+        switch (cellType) {
+            case STRING:
+                String str = cell.getStringCellValue();
+                return str != null ? str.trim() : null;
+            case NUMERIC:
+                if (DateUtil.isCellDateFormatted(cell)) {
+                    return formatExcelDateCell(cell);
+                }
+                return formatNumericValue(cell.getNumericCellValue());
+            case BOOLEAN:
+                return String.valueOf(cell.getBooleanCellValue());
+            case BLANK:
+            case _NONE:
+            case ERROR:
+            default:
+                return null;
+        }
+    }
+
+    private String formatExcelDateCell(Cell cell) {
+        try {
+            LocalDateTime ldt = cell.getLocalDateTimeCellValue();
+            if (ldt != null) {
+                return ldt.toLocalDate().format(OUTPUT_SLASH_FORMATTER);
+            }
+        } catch (Exception e) {
+            try {
+                Date d = cell.getDateCellValue();
+                if (d != null) {
+                    LocalDate localDate = d.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+                    return localDate.format(OUTPUT_SLASH_FORMATTER);
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return null;
+    }
+
+    private String formatNumericValue(double num) {
+        if (Double.isNaN(num) || Double.isInfinite(num)) {
+            return "";
+        }
+        if (num == Math.floor(num) && Math.abs(num) < 1e15) {
+            return String.valueOf((long) num);
+        }
+        return BigDecimal.valueOf(num).stripTrailingZeros().toPlainString();
+    }
+
+    private boolean isExcelRowEmpty(Row row, FormulaEvaluator evaluator, DataFormatter dataFormatter) {
+        if (row == null) {
+            return true;
+        }
+        for (int c = row.getFirstCellNum(); c < row.getLastCellNum(); c++) {
+            if (c < 0) continue;
+            Cell cell = row.getCell(c, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
+            if (cell != null) {
+                String val = getExcelCellValueAsString(cell, evaluator, dataFormatter);
+                if (val != null && !val.trim().isEmpty()) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private GraveImportResponseDto processValidRowsAndSave(List<ParsedGraveRow> validRows,
+                                                           List<GraveImportErrorDto> errors,
+                                                           User adminUser,
+                                                           String fileType) {
         int successfulRecords = 0;
         Map<String, RememberMe> resolvedGraveyardsByName = new HashMap<>();
 
@@ -239,7 +444,7 @@ public class GraveImportService {
         int failedRecords = errors.size();
         int totalRecords = successfulRecords + failedRecords;
 
-        log.info("Grave CSV import finished: total={}, successful={}, failed={}", totalRecords, successfulRecords, failedRecords);
+        log.info("Grave {} import finished: total={}, successful={}, failed={}", fileType, totalRecords, successfulRecords, failedRecords);
 
         return GraveImportResponseDto.builder()
                 .totalRecords(totalRecords)
@@ -283,7 +488,7 @@ public class GraveImportService {
         if (saved != null) {
             newGraveyard = saved;
         }
-        log.info("Auto-created new cemetery/graveyard '{}' (ID: {}) during CSV import", newGraveyard.getName(), newGraveyard.getId());
+        log.info("Auto-created new cemetery/graveyard '{}' (ID: {}) during import", newGraveyard.getName(), newGraveyard.getId());
 
         resolvedByName.put(nameKey, newGraveyard);
         return newGraveyard;
@@ -294,7 +499,8 @@ public class GraveImportService {
                                      Map<String, Integer> headerIndexMap,
                                      List<GraveImportErrorDto> errors,
                                      List<ParsedGraveRow> validRows,
-                                     Set<String> seenInCsv) {
+                                     Set<String> seenInFile,
+                                     String fileType) {
 
         String serialNumber = getColumnValue(columns, headerIndexMap, "serialnumber");
         String cemeteryName = getColumnValue(columns, headerIndexMap, "cemeteryname");
@@ -384,7 +590,7 @@ public class GraveImportService {
             return;
         }
 
-        // 7. Validate dateOfBirth (DD/MM/YYYY format only)
+        // 7. Validate dateOfBirth (DD/MM/YYYY or DD-MM-YYYY format)
         LocalDate dateOfBirth;
         try {
             dateOfBirth = parseStrictDate(dobStr, "Date of birth");
@@ -393,7 +599,7 @@ public class GraveImportService {
             return;
         }
 
-        // 8. Validate dateOfDeath (DD/MM/YYYY format only)
+        // 8. Validate dateOfDeath (DD/MM/YYYY or DD-MM-YYYY format)
         LocalDate dateOfDeath;
         try {
             dateOfDeath = parseStrictDate(dodStr, "Date of death");
@@ -452,12 +658,13 @@ public class GraveImportService {
             }
         }
 
-        // Duplicate check within the CSV file for the SAME cemetery
+        // Duplicate check within the file for the SAME cemetery
         String cemeteryKey = cemeteryName.toLowerCase();
-        String csvKey = cemeteryKey + "::" + graveNumber.toLowerCase();
-        if (!seenInCsv.add(csvKey)) {
-            errors.add(new GraveImportErrorDto(rowNumber, "Duplicate grave record in CSV file: Grave number '" +
-                    graveNumber + "' already listed for cemetery '" + cemeteryName + "'"));
+        String fileKey = cemeteryKey + "::" + graveNumber.toLowerCase();
+        if (!seenInFile.add(fileKey)) {
+            String duplicateMsg = "Duplicate grave record in " + fileType + " file: Grave number '" +
+                    graveNumber + "' already listed for cemetery '" + cemeteryName + "'";
+            errors.add(new GraveImportErrorDto(rowNumber, duplicateMsg));
             return;
         }
 
@@ -506,7 +713,7 @@ public class GraveImportService {
         }
     }
 
-    private void validateHeaders(Map<String, Integer> headerIndexMap) {
+    private void validateHeaders(Map<String, Integer> headerIndexMap, String fileType) {
         List<String> missing = new ArrayList<>();
         if (!headerIndexMap.containsKey("serialnumber")) missing.add("serialNumber");
         if (!headerIndexMap.containsKey("cemeteryname")) missing.add("cemeteryName");
@@ -519,7 +726,8 @@ public class GraveImportService {
         if (!headerIndexMap.containsKey("biography")) missing.add("biography");
 
         if (!missing.isEmpty()) {
-            throw new ApiException("CSV is missing required column headers: " + String.join(", ", missing), HttpStatus.BAD_REQUEST);
+            String prefix = "CSV".equalsIgnoreCase(fileType) ? "CSV" : "Excel file";
+            throw new ApiException(prefix + " is missing required column headers: " + String.join(", ", missing), HttpStatus.BAD_REQUEST);
         }
     }
 

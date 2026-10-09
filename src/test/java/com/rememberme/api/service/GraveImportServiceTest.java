@@ -374,8 +374,229 @@ public class GraveImportServiceTest {
         when(userRepository.findAll()).thenReturn(List.of());
 
         ApiException ex = assertThrows(ApiException.class, () ->
-                graveImportService.importGravesFromCsv(file, "WrongPassword", "admin@example.com"));
+                graveImportService.importGraves(file, "WrongPassword", "admin@example.com"));
 
         assertTrue(ex.getMessage().contains("Invalid Super Admin password"));
+    }
+
+    @Test
+    public void importGraves_InvalidFileFormat_ThrowsApiException() {
+        MockMultipartFile pdfFile = new MockMultipartFile(
+                "file", "graves.pdf", "application/pdf", new byte[]{1, 2, 3});
+
+        ApiException ex = assertThrows(ApiException.class, () ->
+                graveImportService.importGraves(pdfFile, "SuperAdmin@123", "superadmin@example.com"));
+
+        assertTrue(ex.getMessage().contains("Invalid file format. Please upload a valid CSV (.csv) or Excel (.xls, .xlsx) file"));
+    }
+
+    @Test
+    public void importGraves_Xlsx_ValidData_SuccessWithDateCellsAndTextDates() throws Exception {
+        // Prepare calendar dates for Date cells (Excel native date system epoch is 1900+)
+        java.util.Calendar calDob = java.util.Calendar.getInstance();
+        calDob.set(1940, java.util.Calendar.OCTOBER, 2, 0, 0, 0);
+        calDob.set(java.util.Calendar.MILLISECOND, 0);
+
+        java.util.Calendar calDod = java.util.Calendar.getInstance();
+        calDod.set(2020, java.util.Calendar.JANUARY, 30, 0, 0, 0);
+        calDod.set(java.util.Calendar.MILLISECOND, 0);
+
+        List<List<Object>> rows = List.of(
+                List.of("serialNumber", "cemeteryName", "graveNumber", "latitude", "longitude", "deceasedName", "dateOfBirth", "dateOfDeath", "biography"),
+                // Row 1: Native Date cells (post-1900)
+                List.of(1, "Lincoln Tomb", 1, 39.8203, -89.6538, "John Doe", calDob.getTime(), calDod.getTime(), "Leader of independence"),
+                // Row 2: Slash text dates (can be any year, including pre-1900)
+                List.of(2, "Lincoln Tomb", 2, 39.8204, -89.6539, "Mahatma Gandhi", "02/10/1869", "30/01/1948", "Leader of independence"),
+                // Row 3: Hyphen text dates (can be any year, including pre-1900)
+                List.of(3, "Lincoln Tomb", 3, 39.8205, -89.6540, "Mahatma Gandhi", "02-10-1869", "30-01-1948", "Leader of independence")
+        );
+
+        byte[] xlsxBytes = createXlsxWorkbookBytes(rows);
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "graves.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", xlsxBytes);
+
+        when(userRepository.findByEmail("superadmin@example.com")).thenReturn(Optional.of(mockAdminUser));
+        when(rememberMeRepository.findFirstByNameIgnoreCase("Lincoln Tomb")).thenReturn(Optional.of(mockGraveyard));
+        when(graveRepository.existsByRememberMeIdAndGraveNumberIgnoreCase(1L, "1")).thenReturn(false);
+        when(graveRepository.existsByRememberMeIdAndGraveNumberIgnoreCase(1L, "2")).thenReturn(false);
+        when(graveRepository.existsByRememberMeIdAndGraveNumberIgnoreCase(1L, "3")).thenReturn(false);
+        when(graveRepository.save(any(Grave.class))).thenAnswer(i -> i.getArgument(0));
+
+        GraveImportResponseDto response = graveImportService.importGraves(file, "SuperAdmin@123", "superadmin@example.com");
+
+        assertNotNull(response);
+        assertEquals(3, response.getTotalRecords());
+        assertEquals(3, response.getSuccessfulRecords());
+        assertEquals(0, response.getFailedRecords());
+        assertTrue(response.getErrors().isEmpty());
+
+        ArgumentCaptor<DeceasedPerson> deceasedCaptor = ArgumentCaptor.forClass(DeceasedPerson.class);
+        verify(deceasedPersonRepository, times(3)).save(deceasedCaptor.capture());
+        List<DeceasedPerson> saved = deceasedCaptor.getAllValues();
+
+        assertEquals(LocalDate.of(1940, 10, 2), saved.get(0).getDateOfBirth());
+        assertEquals(LocalDate.of(2020, 1, 30), saved.get(0).getDateOfDeath());
+    }
+
+    @Test
+    public void importGraves_Xls_ValidData_Success() throws Exception {
+        List<List<Object>> rows = List.of(
+                List.of("serialNumber", "cemeteryName", "graveNumber", "latitude", "longitude", "deceasedName", "dateOfBirth", "dateOfDeath", "biography"),
+                List.of(1, "Lincoln Tomb", 1, 39.8203, -89.6538, "Abraham Lincoln", "12/02/1809", "15/04/1865", "16th US President")
+        );
+
+        byte[] xlsBytes = createXlsWorkbookBytes(rows);
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "graves.xls", "application/vnd.ms-excel", xlsBytes);
+
+        when(userRepository.findByEmail("superadmin@example.com")).thenReturn(Optional.of(mockAdminUser));
+        when(rememberMeRepository.findFirstByNameIgnoreCase("Lincoln Tomb")).thenReturn(Optional.of(mockGraveyard));
+        when(graveRepository.existsByRememberMeIdAndGraveNumberIgnoreCase(1L, "1")).thenReturn(false);
+        when(graveRepository.save(any(Grave.class))).thenAnswer(i -> i.getArgument(0));
+
+        GraveImportResponseDto response = graveImportService.importGraves(file, "SuperAdmin@123", "superadmin@example.com");
+
+        assertNotNull(response);
+        assertEquals(1, response.getTotalRecords());
+        assertEquals(1, response.getSuccessfulRecords());
+        assertEquals(0, response.getFailedRecords());
+    }
+
+    @Test
+    public void importGraves_Xlsx_MissingHeaders_ThrowsApiException() throws Exception {
+        List<List<Object>> rows = List.of(
+                List.of("serialNumber", "cemeteryName", "graveNumber") // Missing required columns
+        );
+
+        byte[] xlsxBytes = createXlsxWorkbookBytes(rows);
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "graves.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", xlsxBytes);
+
+        ApiException ex = assertThrows(ApiException.class, () ->
+                graveImportService.importGraves(file, "SuperAdmin@123", "superadmin@example.com"));
+
+        assertTrue(ex.getMessage().contains("Excel file is missing required column headers:"));
+    }
+
+    @Test
+    public void importGraves_Xlsx_EmptyFile_ThrowsApiException() throws Exception {
+        List<List<Object>> rows = List.of();
+
+        byte[] xlsxBytes = createXlsxWorkbookBytes(rows);
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "graves.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", xlsxBytes);
+
+        ApiException ex = assertThrows(ApiException.class, () ->
+                graveImportService.importGraves(file, "SuperAdmin@123", "superadmin@example.com"));
+
+        assertTrue(ex.getMessage().contains("Excel file is empty or missing a valid header row"));
+    }
+
+    @Test
+    public void importGraves_Xlsx_DuplicateInSameSheet_RejectsRow() throws Exception {
+        List<List<Object>> rows = List.of(
+                List.of("serialNumber", "cemeteryName", "graveNumber", "latitude", "longitude", "deceasedName", "dateOfBirth", "dateOfDeath", "biography"),
+                List.of(1, "Lincoln Tomb", 101, 39.8203, -89.6538, "Person A", "12/02/1809", "15-04-1865", "President"),
+                List.of(2, "Lincoln Tomb", 101, 39.8204, -89.6539, "Person B", "12-02-1809", "15/04/1865", "President")
+        );
+
+        byte[] xlsxBytes = createXlsxWorkbookBytes(rows);
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "graves.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", xlsxBytes);
+
+        when(rememberMeRepository.findFirstByNameIgnoreCase("Lincoln Tomb")).thenReturn(Optional.of(mockGraveyard));
+        when(graveRepository.save(any(Grave.class))).thenAnswer(i -> i.getArgument(0));
+
+        GraveImportResponseDto response = graveImportService.importGraves(file, "SuperAdmin@123", "superadmin@example.com");
+
+        assertEquals(2, response.getTotalRecords());
+        assertEquals(1, response.getSuccessfulRecords());
+        assertEquals(1, response.getFailedRecords());
+        assertTrue(response.getErrors().get(0).getMessage().contains("Duplicate grave record in Excel file"));
+    }
+
+    @Test
+    public void importGraves_Xlsx_DateOfDeathEarlierThanDateOfBirth_RejectsRow() throws Exception {
+        List<List<Object>> rows = List.of(
+                List.of("serialNumber", "cemeteryName", "graveNumber", "latitude", "longitude", "deceasedName", "dateOfBirth", "dateOfDeath", "biography"),
+                List.of(1, "Lincoln Tomb", 1, 39.8203, -89.6538, "Person A", "15/04/1865", "12-02-1809", "President")
+        );
+
+        byte[] xlsxBytes = createXlsxWorkbookBytes(rows);
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "graves.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", xlsxBytes);
+
+        GraveImportResponseDto response = graveImportService.importGraves(file, "SuperAdmin@123", "superadmin@example.com");
+
+        assertEquals(1, response.getTotalRecords());
+        assertEquals(0, response.getSuccessfulRecords());
+        assertEquals(1, response.getFailedRecords());
+        assertEquals("Date of death cannot be earlier than date of birth.", response.getErrors().get(0).getMessage());
+    }
+
+    private byte[] createXlsxWorkbookBytes(List<List<Object>> rows) throws Exception {
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook();
+             java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+            org.apache.poi.ss.usermodel.Sheet sheet = workbook.createSheet("Graves");
+            org.apache.poi.ss.usermodel.CreationHelper creationHelper = workbook.getCreationHelper();
+            org.apache.poi.ss.usermodel.CellStyle dateCellStyle = workbook.createCellStyle();
+            dateCellStyle.setDataFormat(creationHelper.createDataFormat().getFormat("dd/mm/yyyy"));
+
+            for (int r = 0; r < rows.size(); r++) {
+                org.apache.poi.ss.usermodel.Row row = sheet.createRow(r);
+                List<Object> cellValues = rows.get(r);
+                for (int c = 0; c < cellValues.size(); c++) {
+                    Object val = cellValues.get(c);
+                    org.apache.poi.ss.usermodel.Cell cell = row.createCell(c);
+                    if (val instanceof String s) {
+                        cell.setCellValue(s);
+                    } else if (val instanceof Double d) {
+                        cell.setCellValue(d);
+                    } else if (val instanceof Integer i) {
+                        cell.setCellValue(i);
+                    } else if (val instanceof java.util.Date d) {
+                        cell.setCellValue(d);
+                        cell.setCellStyle(dateCellStyle);
+                    } else if (val != null) {
+                        cell.setCellValue(val.toString());
+                    }
+                }
+            }
+            workbook.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    private byte[] createXlsWorkbookBytes(List<List<Object>> rows) throws Exception {
+        try (org.apache.poi.hssf.usermodel.HSSFWorkbook workbook = new org.apache.poi.hssf.usermodel.HSSFWorkbook();
+             java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+            org.apache.poi.ss.usermodel.Sheet sheet = workbook.createSheet("Graves");
+            org.apache.poi.ss.usermodel.CreationHelper creationHelper = workbook.getCreationHelper();
+            org.apache.poi.ss.usermodel.CellStyle dateCellStyle = workbook.createCellStyle();
+            dateCellStyle.setDataFormat(creationHelper.createDataFormat().getFormat("dd/mm/yyyy"));
+
+            for (int r = 0; r < rows.size(); r++) {
+                org.apache.poi.ss.usermodel.Row row = sheet.createRow(r);
+                List<Object> cellValues = rows.get(r);
+                for (int c = 0; c < cellValues.size(); c++) {
+                    Object val = cellValues.get(c);
+                    org.apache.poi.ss.usermodel.Cell cell = row.createCell(c);
+                    if (val instanceof String s) {
+                        cell.setCellValue(s);
+                    } else if (val instanceof Double d) {
+                        cell.setCellValue(d);
+                    } else if (val instanceof Integer i) {
+                        cell.setCellValue(i);
+                    } else if (val instanceof java.util.Date d) {
+                        cell.setCellValue(d);
+                        cell.setCellStyle(dateCellStyle);
+                    } else if (val != null) {
+                        cell.setCellValue(val.toString());
+                    }
+                }
+            }
+            workbook.write(out);
+            return out.toByteArray();
+        }
     }
 }
