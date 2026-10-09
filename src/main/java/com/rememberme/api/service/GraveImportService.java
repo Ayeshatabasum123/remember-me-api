@@ -54,6 +54,7 @@ public class GraveImportService {
     private final DeceasedPersonRepository deceasedPersonRepository;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final PhotoUrlValidator photoUrlValidator;
 
     @Value("${app.admin.password:Admin@123}")
     private String adminPasswordConfig;
@@ -74,8 +75,6 @@ public class GraveImportService {
         private LocalDate dateOfBirth;
         private LocalDate dateOfDeath;
         private String biography;
-        private String section;
-        private String row;
         private Double locationAccuracy;
         private Grave.VerificationStatus verificationStatus;
         private DeceasedPerson.Gender gender;
@@ -381,8 +380,6 @@ public class GraveImportService {
             Grave grave = Grave.builder()
                     .rememberMe(graveyard)
                     .graveNumber(row.getGraveNumber())
-                    .section(row.getSection())
-                    .row(row.getRow())
                     .latitude(row.getLatitude())
                     .longitude(row.getLongitude())
                     .locationAccuracy(row.getLocationAccuracy())
@@ -485,8 +482,6 @@ public class GraveImportService {
         String biography = getColumnValue(columns, headerIndexMap, "biography");
 
         // Optional additional fields
-        String section = getColumnValue(columns, headerIndexMap, "section");
-        String row = getColumnValue(columns, headerIndexMap, "row");
         String locationAccuracyStr = getColumnValue(columns, headerIndexMap, "locationaccuracy");
         String verificationStatusStr = getColumnValue(columns, headerIndexMap, "verificationstatus");
         String genderStr = getColumnValue(columns, headerIndexMap, "gender");
@@ -630,6 +625,15 @@ public class GraveImportService {
             }
         }
 
+        // Validate photoUrl if provided
+        if (photoUrl != null && !photoUrl.trim().isEmpty()) {
+            PhotoUrlValidator.ValidationResult photoResult = photoUrlValidator.validatePhotoUrl(photoUrl);
+            if (!photoResult.isValid()) {
+                errors.add(new GraveImportErrorDto(rowNumber, photoResult.getErrorMessage()));
+                return;
+            }
+        }
+
         // Duplicate check within the file for the SAME cemetery
         String cemeteryKey = cemeteryName.toLowerCase();
         String fileKey = cemeteryKey + "::" + graveNumber.toLowerCase();
@@ -652,8 +656,6 @@ public class GraveImportService {
                 .dateOfBirth(dateOfBirth)
                 .dateOfDeath(dateOfDeath)
                 .biography(biography)
-                .section(section != null && !section.trim().isEmpty() ? section.trim() : null)
-                .row(row != null && !row.trim().isEmpty() ? row.trim() : null)
                 .locationAccuracy(locationAccuracy)
                 .verificationStatus(status)
                 .gender(gender)

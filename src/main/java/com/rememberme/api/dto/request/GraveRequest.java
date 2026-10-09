@@ -10,8 +10,6 @@ public class GraveRequest {
     private Long rememberMeId;
 
     private String graveNumber;
-    private String section;
-    private String row;
 
     @NotNull
     private Double latitude;

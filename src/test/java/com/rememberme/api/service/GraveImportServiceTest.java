@@ -48,6 +48,9 @@ public class GraveImportServiceTest {
     @Mock
     private PasswordEncoder passwordEncoder;
 
+    @Mock
+    private PhotoUrlValidator photoUrlValidator;
+
     @InjectMocks
     private GraveImportService graveImportService;
 
@@ -538,6 +541,111 @@ public class GraveImportServiceTest {
         assertEquals(0, response.getSuccessfulRecords());
         assertEquals(1, response.getFailedRecords());
         assertEquals("Date of death cannot be earlier than date of birth.", response.getErrors().get(0).getMessage());
+    }
+
+    @Test
+    public void importGraves_Csv_ValidPhotoUrl_Success() {
+        String photoUrl = "https://live.staticflickr.com/84/255569844_3760184197_o.jpg";
+        String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography,photoUrl\n" +
+                "1,Lincoln Tomb,1,39.8203,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865,16th President," + photoUrl + "\n";
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
+
+        when(userRepository.findByEmail("superadmin@example.com")).thenReturn(Optional.of(mockAdminUser));
+        when(rememberMeRepository.findFirstByNameIgnoreCase("Lincoln Tomb")).thenReturn(Optional.of(mockGraveyard));
+        when(graveRepository.existsByRememberMeIdAndGraveNumberIgnoreCase(1L, "1")).thenReturn(false);
+        when(graveRepository.save(any(Grave.class))).thenAnswer(i -> i.getArgument(0));
+        when(photoUrlValidator.validatePhotoUrl(photoUrl)).thenReturn(PhotoUrlValidator.ValidationResult.success());
+
+        GraveImportResponseDto response = graveImportService.importGravesFromCsv(file, "SuperAdmin@123", "superadmin@example.com");
+
+        assertNotNull(response);
+        assertEquals(1, response.getTotalRecords());
+        assertEquals(1, response.getSuccessfulRecords());
+        assertEquals(0, response.getFailedRecords());
+        assertTrue(response.getErrors().isEmpty());
+
+        ArgumentCaptor<DeceasedPerson> deceasedCaptor = ArgumentCaptor.forClass(DeceasedPerson.class);
+        verify(deceasedPersonRepository).save(deceasedCaptor.capture());
+        assertEquals(photoUrl, deceasedCaptor.getValue().getPhotoUrl());
+    }
+
+    @Test
+    public void importGraves_Csv_InvalidPhotoUrl_RejectsRow() {
+        String invalidUrl = "https://example.com/not-allowed.png";
+        String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography,photoUrl\n" +
+                "1,Lincoln Tomb,1,39.8203,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865,16th President," + invalidUrl + "\n";
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
+
+        when(photoUrlValidator.validatePhotoUrl(invalidUrl))
+                .thenReturn(PhotoUrlValidator.ValidationResult.failure("Only JPG and JPEG image URLs are allowed."));
+
+        GraveImportResponseDto response = graveImportService.importGravesFromCsv(file, "SuperAdmin@123", "superadmin@example.com");
+
+        assertNotNull(response);
+        assertEquals(1, response.getTotalRecords());
+        assertEquals(0, response.getSuccessfulRecords());
+        assertEquals(1, response.getFailedRecords());
+        assertEquals(2, response.getErrors().get(0).getRow());
+        assertEquals("Only JPG and JPEG image URLs are allowed.", response.getErrors().get(0).getMessage());
+    }
+
+    @Test
+    public void importGraves_Xlsx_ValidPhotoUrl_Success() throws Exception {
+        String photoUrl = "https://live.staticflickr.com/84/255569844_3760184197_o.jpg";
+        List<List<Object>> rows = List.of(
+                List.of("serialNumber", "cemeteryName", "graveNumber", "latitude", "longitude", "deceasedName", "dateOfBirth", "dateOfDeath", "biography", "photoUrl"),
+                List.of(1, "Lincoln Tomb", 1, 39.8203, -89.6538, "Abraham Lincoln", "12/02/1809", "15/04/1865", "16th US President", photoUrl)
+        );
+
+        byte[] xlsxBytes = createXlsxWorkbookBytes(rows);
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "graves.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", xlsxBytes);
+
+        when(userRepository.findByEmail("superadmin@example.com")).thenReturn(Optional.of(mockAdminUser));
+        when(rememberMeRepository.findFirstByNameIgnoreCase("Lincoln Tomb")).thenReturn(Optional.of(mockGraveyard));
+        when(graveRepository.existsByRememberMeIdAndGraveNumberIgnoreCase(1L, "1")).thenReturn(false);
+        when(graveRepository.save(any(Grave.class))).thenAnswer(i -> i.getArgument(0));
+        when(photoUrlValidator.validatePhotoUrl(photoUrl)).thenReturn(PhotoUrlValidator.ValidationResult.success());
+
+        GraveImportResponseDto response = graveImportService.importGraves(file, "SuperAdmin@123", "superadmin@example.com");
+
+        assertNotNull(response);
+        assertEquals(1, response.getTotalRecords());
+        assertEquals(1, response.getSuccessfulRecords());
+        assertEquals(0, response.getFailedRecords());
+
+        ArgumentCaptor<DeceasedPerson> deceasedCaptor = ArgumentCaptor.forClass(DeceasedPerson.class);
+        verify(deceasedPersonRepository).save(deceasedCaptor.capture());
+        assertEquals(photoUrl, deceasedCaptor.getValue().getPhotoUrl());
+    }
+
+    @Test
+    public void importGraves_Xlsx_InvalidPhotoUrl_RejectsRow() throws Exception {
+        String photoUrl = "https://example.com/oversized.jpg";
+        List<List<Object>> rows = List.of(
+                List.of("serialNumber", "cemeteryName", "graveNumber", "latitude", "longitude", "deceasedName", "dateOfBirth", "dateOfDeath", "biography", "photoUrl"),
+                List.of(1, "Lincoln Tomb", 1, 39.8203, -89.6538, "Abraham Lincoln", "12/02/1809", "15/04/1865", "16th US President", photoUrl)
+        );
+
+        byte[] xlsxBytes = createXlsxWorkbookBytes(rows);
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "graves.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", xlsxBytes);
+
+        when(photoUrlValidator.validatePhotoUrl(photoUrl))
+                .thenReturn(PhotoUrlValidator.ValidationResult.failure("Image size must not exceed 1 MB."));
+
+        GraveImportResponseDto response = graveImportService.importGraves(file, "SuperAdmin@123", "superadmin@example.com");
+
+        assertNotNull(response);
+        assertEquals(1, response.getTotalRecords());
+        assertEquals(0, response.getSuccessfulRecords());
+        assertEquals(1, response.getFailedRecords());
+        assertEquals(2, response.getErrors().get(0).getRow());
+        assertEquals("Image size must not exceed 1 MB.", response.getErrors().get(0).getMessage());
     }
 
     private byte[] createXlsxWorkbookBytes(List<List<Object>> rows) throws Exception {

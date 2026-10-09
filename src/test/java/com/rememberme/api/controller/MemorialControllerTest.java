@@ -239,8 +239,6 @@ public class MemorialControllerTest {
                 "        \"id\": 18\n" +
                 "      },\n" +
                 "      \"graveNumber\": \"N/A\",\n" +
-                "      \"section\": \"N/A\",\n" +
-                "      \"row\": \"N/A\",\n" +
                 "      \"latitude\": 28.6406607,\n" +
                 "      \"longitude\": 77.249518,\n" +
                 "      \"locationAccuracy\": null,\n" +

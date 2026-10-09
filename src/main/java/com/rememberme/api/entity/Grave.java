@@ -27,8 +27,6 @@ public class Grave {
     private RememberMe rememberMe;
 
     private String graveNumber;
-    private String section;
-    private String row;
 
     @Column(nullable = false)
     private Double latitude;

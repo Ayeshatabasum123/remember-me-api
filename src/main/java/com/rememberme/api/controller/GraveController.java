@@ -38,8 +38,6 @@ public class GraveController {
         Grave grave = Grave.builder()
                 .rememberMe(rememberMe)
                 .graveNumber(request.getGraveNumber())
-                .section(request.getSection())
-                .row(request.getRow())
                 .latitude(request.getLatitude())
                 .longitude(request.getLongitude())
                 .locationAccuracy(request.getLocationAccuracy())
