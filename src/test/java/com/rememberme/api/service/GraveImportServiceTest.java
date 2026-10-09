@@ -65,6 +65,8 @@ public class GraveImportServiceTest {
         mockGraveyard = RememberMe.builder()
                 .id(1L)
                 .name("Lincoln Tomb")
+                .city("Springfield")
+                .country("USA")
                 .latitude(39.8203)
                 .longitude(-89.6538)
                 .build();
@@ -80,11 +82,11 @@ public class GraveImportServiceTest {
     @Test
     public void importGraves_ValidRow_SuccessWithBothDateFormatsAndBiography() {
         // Tests all 4 combinations: (slash/slash), (hyphen/hyphen), (slash/hyphen), (hyphen/slash)
-        String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
-                "1,Lincoln Tomb,1,39.8203,-89.6538,Mahatma Gandhi,02/10/1869,30/01/1948,Leader of the Indian independence movement.\n" +
-                "2,Lincoln Tomb,2,39.8204,-89.6539,Mahatma Gandhi,02-10-1869,30-01-1948,Leader of the Indian independence movement.\n" +
-                "3,Lincoln Tomb,3,39.8205,-89.6540,Mahatma Gandhi,02/10/1869,30-01-1948,Leader of the Indian independence movement.\n" +
-                "4,Lincoln Tomb,4,39.8206,-89.6541,Mahatma Gandhi,02-10-1869,30/01/1948,Leader of the Indian independence movement.\n";
+        String csvContent = "serialNumber,cemeteryName,city,country,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
+                "1,Lincoln Tomb,Springfield,USA,1,39.8203,-89.6538,Mahatma Gandhi,02/10/1869,30/01/1948,Leader of the Indian independence movement.\n" +
+                "2,Lincoln Tomb,Springfield,USA,2,39.8204,-89.6539,Mahatma Gandhi,02-10-1869,30-01-1948,Leader of the Indian independence movement.\n" +
+                "3,Lincoln Tomb,Springfield,USA,3,39.8205,-89.6540,Mahatma Gandhi,02/10/1869,30-01-1948,Leader of the Indian independence movement.\n" +
+                "4,Lincoln Tomb,Springfield,USA,4,39.8206,-89.6541,Mahatma Gandhi,02-10-1869,30/01/1948,Leader of the Indian independence movement.\n";
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
@@ -137,10 +139,136 @@ public class GraveImportServiceTest {
     }
 
     @Test
+    public void importGraves_CityEmptyOrWhitespace_RejectsRow() {
+        String csvContent = "serialNumber,cemeteryName,city,country,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
+                "1,Lincoln Tomb,,USA,1,39.8203,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865,President\n" +
+                "2,Lincoln Tomb,   ,USA,2,39.8204,-89.6539,Abraham Lincoln,12/02/1809,15/04/1865,President\n";
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
+
+        GraveImportResponseDto response = graveImportService.importGravesFromCsv(file, "SuperAdmin@123", "superadmin@example.com");
+
+        assertEquals(2, response.getTotalRecords());
+        assertEquals(0, response.getSuccessfulRecords());
+        assertEquals(2, response.getFailedRecords());
+        assertEquals("City is required.", response.getErrors().get(0).getMessage());
+        assertEquals("City is required.", response.getErrors().get(1).getMessage());
+    }
+
+    @Test
+    public void importGraves_CountryEmptyOrWhitespace_RejectsRow() {
+        String csvContent = "serialNumber,cemeteryName,city,country,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
+                "1,Lincoln Tomb,Springfield,,1,39.8203,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865,President\n" +
+                "2,Lincoln Tomb,Springfield,   ,2,39.8204,-89.6539,Abraham Lincoln,12/02/1809,15/04/1865,President\n";
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
+
+        GraveImportResponseDto response = graveImportService.importGravesFromCsv(file, "SuperAdmin@123", "superadmin@example.com");
+
+        assertEquals(2, response.getTotalRecords());
+        assertEquals(0, response.getSuccessfulRecords());
+        assertEquals(2, response.getFailedRecords());
+        assertEquals("Country is required.", response.getErrors().get(0).getMessage());
+        assertEquals("Country is required.", response.getErrors().get(1).getMessage());
+    }
+
+    @Test
+    public void importGraves_CityTooLong_RejectsRow() {
+        String longCity = "C".repeat(101);
+        String csvContent = "serialNumber,cemeteryName,city,country,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
+                "1,Lincoln Tomb," + longCity + ",USA,1,39.8203,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865,President\n";
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
+
+        GraveImportResponseDto response = graveImportService.importGravesFromCsv(file, "SuperAdmin@123", "superadmin@example.com");
+
+        assertEquals(1, response.getTotalRecords());
+        assertEquals(0, response.getSuccessfulRecords());
+        assertEquals(1, response.getFailedRecords());
+        assertEquals("City must not exceed 100 characters.", response.getErrors().get(0).getMessage());
+    }
+
+    @Test
+    public void importGraves_CountryTooLong_RejectsRow() {
+        String longCountry = "U".repeat(101);
+        String csvContent = "serialNumber,cemeteryName,city,country,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
+                "1,Lincoln Tomb,Springfield," + longCountry + ",1,39.8203,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865,President\n";
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
+
+        GraveImportResponseDto response = graveImportService.importGravesFromCsv(file, "SuperAdmin@123", "superadmin@example.com");
+
+        assertEquals(1, response.getTotalRecords());
+        assertEquals(0, response.getSuccessfulRecords());
+        assertEquals(1, response.getFailedRecords());
+        assertEquals("Country must not exceed 100 characters.", response.getErrors().get(0).getMessage());
+    }
+
+    @Test
+    public void importGraves_CityAndCountryExact100Chars_Success() {
+        String exactCity = "C".repeat(100);
+        String exactCountry = "U".repeat(100);
+        String csvContent = "serialNumber,cemeteryName,city,country,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
+                "1,New Cemetery," + exactCity + "," + exactCountry + ",1,39.8203,-89.6538,Abraham Lincoln,12-02-1809,15-04-1865,President\n";
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
+
+        when(userRepository.findByEmail("superadmin@example.com")).thenReturn(Optional.of(mockAdminUser));
+        when(rememberMeRepository.findFirstByNameIgnoreCase("New Cemetery")).thenReturn(Optional.empty());
+        when(rememberMeRepository.save(any(RememberMe.class))).thenAnswer(i -> {
+            RememberMe rm = i.getArgument(0);
+            rm.setId(10L);
+            return rm;
+        });
+        when(graveRepository.existsByRememberMeIdAndGraveNumberIgnoreCase(10L, "1")).thenReturn(false);
+        when(graveRepository.save(any(Grave.class))).thenAnswer(i -> i.getArgument(0));
+
+        GraveImportResponseDto response = graveImportService.importGravesFromCsv(file, "SuperAdmin@123", "superadmin@example.com");
+
+        assertNotNull(response);
+        assertEquals(1, response.getTotalRecords());
+        assertEquals(1, response.getSuccessfulRecords());
+        assertEquals(0, response.getFailedRecords());
+        assertTrue(response.getErrors().isEmpty());
+
+        ArgumentCaptor<RememberMe> rmCaptor = ArgumentCaptor.forClass(RememberMe.class);
+        verify(rememberMeRepository).save(rmCaptor.capture());
+        assertEquals(exactCity, rmCaptor.getValue().getCity());
+        assertEquals(exactCountry, rmCaptor.getValue().getCountry());
+    }
+
+    @Test
+    public void importGraves_DuplicateCityAndCountryAcrossRows_Success() {
+        String csvContent = "serialNumber,cemeteryName,city,country,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
+                "1,Lincoln Tomb,New Delhi,India,1,39.8203,-89.6538,Person A,12/02/1809,15/04/1865,President\n" +
+                "2,Lincoln Tomb,New Delhi,India,2,39.8204,-89.6539,Person B,12/02/1809,15/04/1865,President\n";
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
+
+        when(userRepository.findByEmail("superadmin@example.com")).thenReturn(Optional.of(mockAdminUser));
+        when(rememberMeRepository.findFirstByNameIgnoreCase("Lincoln Tomb")).thenReturn(Optional.of(mockGraveyard));
+        when(graveRepository.existsByRememberMeIdAndGraveNumberIgnoreCase(1L, "1")).thenReturn(false);
+        when(graveRepository.existsByRememberMeIdAndGraveNumberIgnoreCase(1L, "2")).thenReturn(false);
+        when(graveRepository.save(any(Grave.class))).thenAnswer(i -> i.getArgument(0));
+
+        GraveImportResponseDto response = graveImportService.importGravesFromCsv(file, "SuperAdmin@123", "superadmin@example.com");
+
+        assertEquals(2, response.getTotalRecords());
+        assertEquals(2, response.getSuccessfulRecords());
+        assertEquals(0, response.getFailedRecords());
+    }
+
+    @Test
     public void importGraves_BiographyEmpty_RejectsRow() {
-        String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
-                "1,Lincoln Tomb,1,39.8203,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865,\n" +
-                "2,Lincoln Tomb,2,39.8204,-89.6539,Alan Turing,23-06-1912,07-06-1954,   \n";
+        String csvContent = "serialNumber,cemeteryName,city,country,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
+                "1,Lincoln Tomb,Springfield,USA,1,39.8203,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865,\n" +
+                "2,Lincoln Tomb,Springfield,USA,2,39.8204,-89.6539,Alan Turing,23-06-1912,07-06-1954,   \n";
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
@@ -157,8 +285,8 @@ public class GraveImportServiceTest {
     @Test
     public void importGraves_BiographyTooLong_RejectsRow() {
         String longBio = "B".repeat(201);
-        String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
-                "1,Lincoln Tomb,1,39.8203,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865," + longBio + "\n";
+        String csvContent = "serialNumber,cemeteryName,city,country,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
+                "1,Lincoln Tomb,Springfield,USA,1,39.8203,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865," + longBio + "\n";
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
@@ -174,8 +302,8 @@ public class GraveImportServiceTest {
     @Test
     public void importGraves_BiographyExact200Chars_Success() {
         String exact200Bio = "B".repeat(200);
-        String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
-                "1,Lincoln Tomb,1,39.8203,-89.6538,Abraham Lincoln,12-02-1809,15/04/1865," + exact200Bio + "\n";
+        String csvContent = "serialNumber,cemeteryName,city,country,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
+                "1,Lincoln Tomb,Springfield,USA,1,39.8203,-89.6538,Abraham Lincoln,12-02-1809,15/04/1865," + exact200Bio + "\n";
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
@@ -201,8 +329,8 @@ public class GraveImportServiceTest {
     @Test
     public void importGraves_CemeteryNameTooLong_RejectsRow() {
         String longCemeteryName = "C".repeat(101);
-        String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
-                "1," + longCemeteryName + ",1,39.8203,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865,President\n";
+        String csvContent = "serialNumber,cemeteryName,city,country,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
+                "1," + longCemeteryName + ",Springfield,USA,1,39.8203,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865,President\n";
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
@@ -218,8 +346,8 @@ public class GraveImportServiceTest {
     @Test
     public void importGraves_DeceasedNameTooLong_RejectsRow() {
         String longDeceasedName = "D".repeat(101);
-        String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
-                "1,Lincoln Tomb,1,39.8203,-89.6538," + longDeceasedName + ",12/02/1809,15/04/1865,President\n";
+        String csvContent = "serialNumber,cemeteryName,city,country,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
+                "1,Lincoln Tomb,Springfield,USA,1,39.8203,-89.6538," + longDeceasedName + ",12/02/1809,15/04/1865,President\n";
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
@@ -236,8 +364,8 @@ public class GraveImportServiceTest {
     public void importGraves_CemeteryAndDeceasedNameExact100Chars_Success() {
         String exact100CemeteryName = "C".repeat(100);
         String exact100DeceasedName = "D".repeat(100);
-        String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
-                "1," + exact100CemeteryName + ",1,39.8203,-89.6538," + exact100DeceasedName + ",12-02-1809,15-04-1865,President\n";
+        String csvContent = "serialNumber,cemeteryName,city,country,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
+                "1," + exact100CemeteryName + ",Springfield,USA,1,39.8203,-89.6538," + exact100DeceasedName + ",12-02-1809,15-04-1865,President\n";
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
@@ -245,6 +373,8 @@ public class GraveImportServiceTest {
         RememberMe graveyard100 = RememberMe.builder()
                 .id(2L)
                 .name(exact100CemeteryName)
+                .city("Springfield")
+                .country("USA")
                 .latitude(39.8203)
                 .longitude(-89.6538)
                 .build();
@@ -269,10 +399,10 @@ public class GraveImportServiceTest {
 
     @Test
     public void importGraves_InvalidCoordinates_RejectsRow() {
-        String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
-                "1,Lincoln Tomb,1,invalid_lat,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865,President\n" +
-                "2,Lincoln Tomb,2,95.0000,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865,President\n" +
-                "3,Lincoln Tomb,3,39.8203,200.0000,Abraham Lincoln,12/02/1809,15/04/1865,President\n";
+        String csvContent = "serialNumber,cemeteryName,city,country,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
+                "1,Lincoln Tomb,Springfield,USA,1,invalid_lat,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865,President\n" +
+                "2,Lincoln Tomb,Springfield,USA,2,95.0000,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865,President\n" +
+                "3,Lincoln Tomb,Springfield,USA,3,39.8203,200.0000,Abraham Lincoln,12/02/1809,15/04/1865,President\n";
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
@@ -289,14 +419,14 @@ public class GraveImportServiceTest {
 
     @Test
     public void importGraves_InvalidDateFormat_RejectsRow() {
-        String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
-                "1,Lincoln Tomb,1,39.8203,-89.6538,Abraham Lincoln,1809-02-12,15/04/1865,President\n" +   // Hyphenated YYYY-MM-DD rejected
-                "2,Lincoln Tomb,2,39.8203,-89.6538,Abraham Lincoln,12021809,15/04/1865,President\n" +     // DDMMYYYY without slashes rejected
-                "3,Lincoln Tomb,3,39.8203,-89.6538,Abraham Lincoln,31/02/1948,30-01-1948,President\n" +   // 31 Feb rejected
-                "4,Lincoln Tomb,4,39.8203,-89.6538,Abraham Lincoln,32-01-2000,15/04/1865,President\n" +   // 32 Jan rejected
-                "5,Lincoln Tomb,5,39.8203,-89.6538,Abraham Lincoln,00/00/0000,15/04/1865,President\n" +   // 00/00/0000 rejected
-                "6,Lincoln Tomb,6,39.8203,-89.6538,Abraham Lincoln,29-02-2021,15/04/1865,President\n" +   // 29 Feb non-leap rejected
-                "7,Lincoln Tomb,7,39.8203,-89.6538,Abraham Lincoln,23/06-1912,15/04/1865,President\n";    // mixed delimiter rejected
+        String csvContent = "serialNumber,cemeteryName,city,country,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
+                "1,Lincoln Tomb,Springfield,USA,1,39.8203,-89.6538,Abraham Lincoln,1809-02-12,15/04/1865,President\n" +   // Hyphenated YYYY-MM-DD rejected
+                "2,Lincoln Tomb,Springfield,USA,2,39.8203,-89.6538,Abraham Lincoln,12021809,15/04/1865,President\n" +     // DDMMYYYY without slashes rejected
+                "3,Lincoln Tomb,Springfield,USA,3,39.8203,-89.6538,Abraham Lincoln,31/02/1948,30-01-1948,President\n" +   // 31 Feb rejected
+                "4,Lincoln Tomb,Springfield,USA,4,39.8203,-89.6538,Abraham Lincoln,32-01-2000,15/04/1865,President\n" +   // 32 Jan rejected
+                "5,Lincoln Tomb,Springfield,USA,5,39.8203,-89.6538,Abraham Lincoln,00/00/0000,15/04/1865,President\n" +   // 00/00/0000 rejected
+                "6,Lincoln Tomb,Springfield,USA,6,39.8203,-89.6538,Abraham Lincoln,29-02-2021,15/04/1865,President\n" +   // 29 Feb non-leap rejected
+                "7,Lincoln Tomb,Springfield,USA,7,39.8203,-89.6538,Abraham Lincoln,23/06-1912,15/04/1865,President\n";    // mixed delimiter rejected
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
@@ -313,9 +443,9 @@ public class GraveImportServiceTest {
 
     @Test
     public void importGraves_InvalidDateOfDeathFormat_RejectsRow() {
-        String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
-                "1,Lincoln Tomb,1,39.8203,-89.6538,Abraham Lincoln,12/02/1809,31/02/1865,President\n" +
-                "2,Lincoln Tomb,2,39.8203,-89.6538,Abraham Lincoln,12-02-1809,1865-04-15,President\n";
+        String csvContent = "serialNumber,cemeteryName,city,country,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
+                "1,Lincoln Tomb,Springfield,USA,1,39.8203,-89.6538,Abraham Lincoln,12/02/1809,31/02/1865,President\n" +
+                "2,Lincoln Tomb,Springfield,USA,2,39.8203,-89.6538,Abraham Lincoln,12-02-1809,1865-04-15,President\n";
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
@@ -331,8 +461,8 @@ public class GraveImportServiceTest {
 
     @Test
     public void importGraves_DateOfDeathEarlierThanDateOfBirth_RejectsRow() {
-        String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
-                "1,Lincoln Tomb,1,39.8203,-89.6538,Abraham Lincoln,15/04/1865,12-02-1809,President\n";
+        String csvContent = "serialNumber,cemeteryName,city,country,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
+                "1,Lincoln Tomb,Springfield,USA,1,39.8203,-89.6538,Abraham Lincoln,15/04/1865,12-02-1809,President\n";
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
@@ -347,9 +477,9 @@ public class GraveImportServiceTest {
 
     @Test
     public void importGraves_DuplicateInSameCemetery_RejectsRow() {
-        String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
-                "1,Lincoln Tomb,1,39.8203,-89.6538,Person One,12/02/1809,15-04-1865,President\n" +
-                "2,Lincoln Tomb,1,39.8204,-89.6539,Person Two,12-02-1809,15/04/1865,President\n";
+        String csvContent = "serialNumber,cemeteryName,city,country,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
+                "1,Lincoln Tomb,Springfield,USA,1,39.8203,-89.6538,Person One,12/02/1809,15-04-1865,President\n" +
+                "2,Lincoln Tomb,Springfield,USA,1,39.8204,-89.6539,Person Two,12-02-1809,15/04/1865,President\n";
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
@@ -368,8 +498,8 @@ public class GraveImportServiceTest {
 
     @Test
     public void importGraves_NonAdminUser_ThrowsForbidden() {
-        String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
-                "1,Lincoln Tomb,1,39.8203,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865,President\n";
+        String csvContent = "serialNumber,cemeteryName,city,country,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
+                "1,Lincoln Tomb,Springfield,USA,1,39.8203,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865,President\n";
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
 
@@ -411,13 +541,13 @@ public class GraveImportServiceTest {
         calDod.set(java.util.Calendar.MILLISECOND, 0);
 
         List<List<Object>> rows = List.of(
-                List.of("serialNumber", "cemeteryName", "graveNumber", "latitude", "longitude", "deceasedName", "dateOfBirth", "dateOfDeath", "biography"),
+                List.of("serialNumber", "cemeteryName", "city", "country", "graveNumber", "latitude", "longitude", "deceasedName", "dateOfBirth", "dateOfDeath", "biography"),
                 // Row 1: Native Date cells (post-1900)
-                List.of(1, "Lincoln Tomb", 1, 39.8203, -89.6538, "John Doe", calDob.getTime(), calDod.getTime(), "Leader of independence"),
+                List.of(1, "Lincoln Tomb", "Springfield", "USA", 1, 39.8203, -89.6538, "John Doe", calDob.getTime(), calDod.getTime(), "Leader of independence"),
                 // Row 2: Slash text dates (can be any year, including pre-1900)
-                List.of(2, "Lincoln Tomb", 2, 39.8204, -89.6539, "Mahatma Gandhi", "02/10/1869", "30/01/1948", "Leader of independence"),
+                List.of(2, "Lincoln Tomb", "Springfield", "USA", 2, 39.8204, -89.6539, "Mahatma Gandhi", "02/10/1869", "30/01/1948", "Leader of independence"),
                 // Row 3: Hyphen text dates (can be any year, including pre-1900)
-                List.of(3, "Lincoln Tomb", 3, 39.8205, -89.6540, "Mahatma Gandhi", "02-10-1869", "30-01-1948", "Leader of independence")
+                List.of(3, "Lincoln Tomb", "Springfield", "USA", 3, 39.8205, -89.6540, "Mahatma Gandhi", "02-10-1869", "30-01-1948", "Leader of independence")
         );
 
         byte[] xlsxBytes = createXlsxWorkbookBytes(rows);
@@ -450,8 +580,8 @@ public class GraveImportServiceTest {
     @Test
     public void importGraves_Xls_ValidData_Success() throws Exception {
         List<List<Object>> rows = List.of(
-                List.of("serialNumber", "cemeteryName", "graveNumber", "latitude", "longitude", "deceasedName", "dateOfBirth", "dateOfDeath", "biography"),
-                List.of(1, "Lincoln Tomb", 1, 39.8203, -89.6538, "Abraham Lincoln", "12/02/1809", "15/04/1865", "16th US President")
+                List.of("serialNumber", "cemeteryName", "city", "country", "graveNumber", "latitude", "longitude", "deceasedName", "dateOfBirth", "dateOfDeath", "biography"),
+                List.of(1, "Lincoln Tomb", "Springfield", "USA", 1, 39.8203, -89.6538, "Abraham Lincoln", "12/02/1809", "15/04/1865", "16th US President")
         );
 
         byte[] xlsBytes = createXlsWorkbookBytes(rows);
@@ -504,9 +634,9 @@ public class GraveImportServiceTest {
     @Test
     public void importGraves_Xlsx_DuplicateInSameSheet_RejectsRow() throws Exception {
         List<List<Object>> rows = List.of(
-                List.of("serialNumber", "cemeteryName", "graveNumber", "latitude", "longitude", "deceasedName", "dateOfBirth", "dateOfDeath", "biography"),
-                List.of(1, "Lincoln Tomb", 101, 39.8203, -89.6538, "Person A", "12/02/1809", "15-04-1865", "President"),
-                List.of(2, "Lincoln Tomb", 101, 39.8204, -89.6539, "Person B", "12-02-1809", "15/04/1865", "President")
+                List.of("serialNumber", "cemeteryName", "city", "country", "graveNumber", "latitude", "longitude", "deceasedName", "dateOfBirth", "dateOfDeath", "biography"),
+                List.of(1, "Lincoln Tomb", "Springfield", "USA", 101, 39.8203, -89.6538, "Person A", "12/02/1809", "15-04-1865", "President"),
+                List.of(2, "Lincoln Tomb", "Springfield", "USA", 101, 39.8204, -89.6539, "Person B", "12-02-1809", "15/04/1865", "President")
         );
 
         byte[] xlsxBytes = createXlsxWorkbookBytes(rows);
@@ -527,8 +657,8 @@ public class GraveImportServiceTest {
     @Test
     public void importGraves_Xlsx_DateOfDeathEarlierThanDateOfBirth_RejectsRow() throws Exception {
         List<List<Object>> rows = List.of(
-                List.of("serialNumber", "cemeteryName", "graveNumber", "latitude", "longitude", "deceasedName", "dateOfBirth", "dateOfDeath", "biography"),
-                List.of(1, "Lincoln Tomb", 1, 39.8203, -89.6538, "Person A", "15/04/1865", "12-02-1809", "President")
+                List.of("serialNumber", "cemeteryName", "city", "country", "graveNumber", "latitude", "longitude", "deceasedName", "dateOfBirth", "dateOfDeath", "biography"),
+                List.of(1, "Lincoln Tomb", "Springfield", "USA", 1, 39.8203, -89.6538, "Person A", "15/04/1865", "12-02-1809", "President")
         );
 
         byte[] xlsxBytes = createXlsxWorkbookBytes(rows);
@@ -546,8 +676,8 @@ public class GraveImportServiceTest {
     @Test
     public void importGraves_Csv_ValidPhotoUrl_Success() {
         String photoUrl = "https://live.staticflickr.com/84/255569844_3760184197_o.jpg";
-        String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography,photoUrl\n" +
-                "1,Lincoln Tomb,1,39.8203,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865,16th President," + photoUrl + "\n";
+        String csvContent = "serialNumber,cemeteryName,city,country,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography,photoUrl\n" +
+                "1,Lincoln Tomb,Springfield,USA,1,39.8203,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865,16th President," + photoUrl + "\n";
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
@@ -574,8 +704,8 @@ public class GraveImportServiceTest {
     @Test
     public void importGraves_Csv_InvalidPhotoUrl_RejectsRow() {
         String invalidUrl = "https://example.com/not-allowed.png";
-        String csvContent = "serialNumber,cemeteryName,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography,photoUrl\n" +
-                "1,Lincoln Tomb,1,39.8203,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865,16th President," + invalidUrl + "\n";
+        String csvContent = "serialNumber,cemeteryName,city,country,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography,photoUrl\n" +
+                "1,Lincoln Tomb,Springfield,USA,1,39.8203,-89.6538,Abraham Lincoln,12/02/1809,15/04/1865,16th President," + invalidUrl + "\n";
 
         MockMultipartFile file = new MockMultipartFile(
                 "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
@@ -597,8 +727,8 @@ public class GraveImportServiceTest {
     public void importGraves_Xlsx_ValidPhotoUrl_Success() throws Exception {
         String photoUrl = "https://live.staticflickr.com/84/255569844_3760184197_o.jpg";
         List<List<Object>> rows = List.of(
-                List.of("serialNumber", "cemeteryName", "graveNumber", "latitude", "longitude", "deceasedName", "dateOfBirth", "dateOfDeath", "biography", "photoUrl"),
-                List.of(1, "Lincoln Tomb", 1, 39.8203, -89.6538, "Abraham Lincoln", "12/02/1809", "15/04/1865", "16th US President", photoUrl)
+                List.of("serialNumber", "cemeteryName", "city", "country", "graveNumber", "latitude", "longitude", "deceasedName", "dateOfBirth", "dateOfDeath", "biography", "photoUrl"),
+                List.of(1, "Lincoln Tomb", "Springfield", "USA", 1, 39.8203, -89.6538, "Abraham Lincoln", "12/02/1809", "15/04/1865", "16th US President", photoUrl)
         );
 
         byte[] xlsxBytes = createXlsxWorkbookBytes(rows);
@@ -627,8 +757,8 @@ public class GraveImportServiceTest {
     public void importGraves_Xlsx_InvalidPhotoUrl_RejectsRow() throws Exception {
         String photoUrl = "https://example.com/oversized.jpg";
         List<List<Object>> rows = List.of(
-                List.of("serialNumber", "cemeteryName", "graveNumber", "latitude", "longitude", "deceasedName", "dateOfBirth", "dateOfDeath", "biography", "photoUrl"),
-                List.of(1, "Lincoln Tomb", 1, 39.8203, -89.6538, "Abraham Lincoln", "12/02/1809", "15/04/1865", "16th US President", photoUrl)
+                List.of("serialNumber", "cemeteryName", "city", "country", "graveNumber", "latitude", "longitude", "deceasedName", "dateOfBirth", "dateOfDeath", "biography", "photoUrl"),
+                List.of(1, "Lincoln Tomb", "Springfield", "USA", 1, 39.8203, -89.6538, "Abraham Lincoln", "12/02/1809", "15/04/1865", "16th US President", photoUrl)
         );
 
         byte[] xlsxBytes = createXlsxWorkbookBytes(rows);

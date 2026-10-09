@@ -19,13 +19,25 @@ public class DatabaseSchemaMigrationTest {
     private DatabaseSchemaMigration schemaMigration;
 
     @Test
-    public void run_ExecutesSchemaAlterations() {
+    public void run_ExecutesSchemaAlterationsAndPurge() {
         schemaMigration.run();
 
+        // Verify user schema migration
         verify(jdbcTemplate, times(1)).execute("UPDATE users SET role = 'ADMIN' WHERE role IN ('SUPER_ADMIN', 'GRAVEYARD_ADMIN')");
         verify(jdbcTemplate, times(1)).execute("UPDATE users SET role = 'USER' WHERE role IS NULL OR role NOT IN ('ADMIN', 'USER')");
         verify(jdbcTemplate, times(1)).execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check");
         verify(jdbcTemplate, times(1)).execute("ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('USER', 'ADMIN'))");
+
+        // Verify module data deletion in strict FK order
+        verify(jdbcTemplate, times(1)).execute("DELETE FROM photos");
+        verify(jdbcTemplate, times(1)).execute("DELETE FROM relationships");
+        verify(jdbcTemplate, times(1)).execute("DELETE FROM memorials");
+        verify(jdbcTemplate, times(1)).execute("DELETE FROM funeral_events");
+        verify(jdbcTemplate, times(1)).execute("DELETE FROM reports");
+        verify(jdbcTemplate, times(1)).execute("DELETE FROM favorites");
+        verify(jdbcTemplate, times(1)).execute("DELETE FROM deceased_persons");
+        verify(jdbcTemplate, times(1)).execute("DELETE FROM graves");
+        verify(jdbcTemplate, times(1)).execute("DELETE FROM graveyards");
     }
 
     @Test
@@ -35,6 +47,22 @@ public class DatabaseSchemaMigrationTest {
         // Should log warning and not crash app startup
         schemaMigration.run();
 
-        verify(jdbcTemplate, times(1)).execute(anyString());
+        verify(jdbcTemplate, atLeastOnce()).execute(anyString());
+    }
+
+    @Test
+    public void purgeSelectedModuleData_ExecutesCorrectDeletionOrder() {
+        schemaMigration.purgeSelectedModuleData();
+
+        verify(jdbcTemplate, times(1)).execute("DELETE FROM photos");
+        verify(jdbcTemplate, times(1)).execute("DELETE FROM relationships");
+        verify(jdbcTemplate, times(1)).execute("DELETE FROM memorials");
+        verify(jdbcTemplate, times(1)).execute("DELETE FROM funeral_events");
+        verify(jdbcTemplate, times(1)).execute("DELETE FROM reports");
+        verify(jdbcTemplate, times(1)).execute("DELETE FROM favorites");
+        verify(jdbcTemplate, times(1)).execute("DELETE FROM deceased_persons");
+        verify(jdbcTemplate, times(1)).execute("DELETE FROM graves");
+        verify(jdbcTemplate, times(1)).execute("DELETE FROM graveyards");
     }
 }
+

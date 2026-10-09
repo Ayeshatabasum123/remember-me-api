@@ -2,6 +2,8 @@ package com.rememberme.api.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -26,8 +28,17 @@ public class RememberMe {
     private String name;
 
     private String address;
+
+    @NotBlank(message = "City is required")
+    @Size(max = 100, message = "City must not exceed 100 characters")
+    @Column(nullable = false, length = 100)
     private String city;
+
     private String state;
+
+    @NotBlank(message = "Country is required")
+    @Size(max = 100, message = "Country must not exceed 100 characters")
+    @Column(nullable = false, length = 100)
     private String country;
 
     @Column(nullable = false)

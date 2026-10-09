@@ -88,12 +88,14 @@ public class RememberMeControllerTest {
         RememberMe saved = RememberMe.builder()
                 .id(1L)
                 .name("Greenwood")
+                .city("Springfield")
+                .country("USA")
                 .latitude(12.34)
                 .longitude(56.78)
                 .build();
         when(rememberMeRepository.save(any(RememberMe.class))).thenReturn(saved);
 
-        String json = "{\"name\":\"Greenwood\",\"latitude\":12.34,\"longitude\":56.78}";
+        String json = "{\"name\":\"Greenwood\",\"city\":\"Springfield\",\"country\":\"USA\",\"latitude\":12.34,\"longitude\":56.78}";
 
         mockMvc.perform(post("/api/graveyards")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -108,7 +110,7 @@ public class RememberMeControllerTest {
         when(rememberMeRepository.existsByNameIgnoreCaseAndLatitudeAndLongitude("Greenwood", 12.34, 56.78))
                 .thenReturn(true);
 
-        String json = "{\"name\":\"Greenwood\",\"latitude\":12.34,\"longitude\":56.78}";
+        String json = "{\"name\":\"Greenwood\",\"city\":\"Springfield\",\"country\":\"USA\",\"latitude\":12.34,\"longitude\":56.78}";
 
         mockMvc.perform(post("/api/graveyards")
                 .contentType(MediaType.APPLICATION_JSON)

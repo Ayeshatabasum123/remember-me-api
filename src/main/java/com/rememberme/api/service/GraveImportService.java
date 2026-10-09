@@ -68,6 +68,8 @@ public class GraveImportService {
         private int rowNumber;
         private String serialNumber;
         private String cemeteryName;
+        private String city;
+        private String country;
         private String graveNumber;
         private Double latitude;
         private Double longitude;
@@ -437,6 +439,18 @@ public class GraveImportService {
         Optional<RememberMe> dbByName = rememberMeRepository.findFirstByNameIgnoreCase(cleanName);
         if (dbByName.isPresent()) {
             RememberMe found = dbByName.get();
+            boolean updated = false;
+            if (row.getCity() != null && (found.getCity() == null || found.getCity().trim().isEmpty())) {
+                found.setCity(row.getCity());
+                updated = true;
+            }
+            if (row.getCountry() != null && (found.getCountry() == null || found.getCountry().trim().isEmpty())) {
+                found.setCountry(row.getCountry());
+                updated = true;
+            }
+            if (updated) {
+                found = rememberMeRepository.save(found);
+            }
             resolvedByName.put(nameKey, found);
             return found;
         }
@@ -445,6 +459,8 @@ public class GraveImportService {
         LocalDateTime now = LocalDateTime.now();
         RememberMe newGraveyard = RememberMe.builder()
                 .name(cleanName)
+                .city(row.getCity())
+                .country(row.getCountry())
                 .latitude(row.getLatitude())
                 .longitude(row.getLongitude())
                 .status(RememberMe.ApprovalStatus.APPROVED)
@@ -473,6 +489,8 @@ public class GraveImportService {
 
         String serialNumber = getColumnValue(columns, headerIndexMap, "serialnumber");
         String cemeteryName = getColumnValue(columns, headerIndexMap, "cemeteryname");
+        String city = getColumnValue(columns, headerIndexMap, "city");
+        String country = getColumnValue(columns, headerIndexMap, "country");
         String graveNumber = getColumnValue(columns, headerIndexMap, "gravenumber");
         String latitudeStr = getColumnValue(columns, headerIndexMap, "latitude");
         String longitudeStr = getColumnValue(columns, headerIndexMap, "longitude");
@@ -502,6 +520,28 @@ public class GraveImportService {
         cemeteryName = cemeteryName.trim();
         if (cemeteryName.length() > 100) {
             errors.add(new GraveImportErrorDto(rowNumber, "Cemetery name must be 100 characters or fewer."));
+            return;
+        }
+
+        // Validate city
+        if (city == null || city.trim().isEmpty()) {
+            errors.add(new GraveImportErrorDto(rowNumber, "City is required."));
+            return;
+        }
+        city = city.trim();
+        if (city.length() > 100) {
+            errors.add(new GraveImportErrorDto(rowNumber, "City must not exceed 100 characters."));
+            return;
+        }
+
+        // Validate country
+        if (country == null || country.trim().isEmpty()) {
+            errors.add(new GraveImportErrorDto(rowNumber, "Country is required."));
+            return;
+        }
+        country = country.trim();
+        if (country.length() > 100) {
+            errors.add(new GraveImportErrorDto(rowNumber, "Country must not exceed 100 characters."));
             return;
         }
 
@@ -649,6 +689,8 @@ public class GraveImportService {
                 .rowNumber(rowNumber)
                 .serialNumber(serialNumber)
                 .cemeteryName(cemeteryName)
+                .city(city)
+                .country(country)
                 .graveNumber(graveNumber)
                 .latitude(latitude)
                 .longitude(longitude)
@@ -691,6 +733,8 @@ public class GraveImportService {
         List<String> missing = new ArrayList<>();
         if (!headerIndexMap.containsKey("serialnumber")) missing.add("serialNumber");
         if (!headerIndexMap.containsKey("cemeteryname")) missing.add("cemeteryName");
+        if (!headerIndexMap.containsKey("city")) missing.add("city");
+        if (!headerIndexMap.containsKey("country")) missing.add("country");
         if (!headerIndexMap.containsKey("gravenumber")) missing.add("graveNumber");
         if (!headerIndexMap.containsKey("latitude")) missing.add("latitude");
         if (!headerIndexMap.containsKey("longitude")) missing.add("longitude");
@@ -718,6 +762,10 @@ public class GraveImportService {
             } else if (normalized.equals("cemeteryname") || normalized.equals("cemetery") || normalized.equals("graveyardname")
                     || normalized.equals("graveyard") || normalized.equals("remembermename") || normalized.equals("rememberme")) {
                 map.put("cemeteryname", i);
+            } else if (normalized.equals("city") || normalized.equals("town") || normalized.equals("cemeterycity") || normalized.equals("graveyardcity")) {
+                map.put("city", i);
+            } else if (normalized.equals("country") || normalized.equals("nation") || normalized.equals("cemeterycountry") || normalized.equals("graveyardcountry")) {
+                map.put("country", i);
             } else if (normalized.equals("gravenumber") || normalized.equals("graveno") || normalized.equals("plotnumber")
                     || normalized.equals("plotno") || normalized.equals("plot") || normalized.equals("grave")) {
                 map.put("gravenumber", i);
