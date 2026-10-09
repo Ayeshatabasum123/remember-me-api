@@ -46,6 +46,7 @@ public class AuthServiceTest {
         registerRequest.setFullName("John Doe");
         registerRequest.setEmail("john@example.com");
         registerRequest.setPassword("password123");
+        registerRequest.setConfirmPassword("password123");
 
         loginRequest = new LoginRequest();
         loginRequest.setEmail("admin-test@example.com");
@@ -67,6 +68,24 @@ public class AuthServiceTest {
         assertEquals(User.Role.USER, savedUser.getRole());
         assertEquals("USER", response.getRole());
         assertEquals("jwtToken123", response.getToken());
+    }
+
+    @Test
+    public void register_PasswordShorterThan8Chars_ThrowsApiException() {
+        registerRequest.setPassword("1234567");
+        registerRequest.setConfirmPassword("1234567");
+
+        ApiException ex = assertThrows(ApiException.class, () -> authService.register(registerRequest));
+        assertEquals("Password must be at least 8 characters long.", ex.getMessage());
+    }
+
+    @Test
+    public void register_PasswordAndConfirmPasswordMismatch_ThrowsApiException() {
+        registerRequest.setPassword("password123");
+        registerRequest.setConfirmPassword("different123");
+
+        ApiException ex = assertThrows(ApiException.class, () -> authService.register(registerRequest));
+        assertEquals("Password and Confirm Password must match.", ex.getMessage());
     }
 
     @Test

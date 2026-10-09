@@ -43,6 +43,64 @@ public class AuthControllerTest {
     private CustomUserDetailsService userDetailsService;
 
     @Test
+    public void register_Success() throws Exception {
+        com.rememberme.api.dto.request.RegisterRequest request = new com.rememberme.api.dto.request.RegisterRequest();
+        request.setFullName("Jane Doe");
+        request.setEmail("jane@example.com");
+        request.setPassword("password123");
+        request.setConfirmPassword("password123");
+
+        com.rememberme.api.dto.response.AuthResponse authResponse = com.rememberme.api.dto.response.AuthResponse.builder()
+                .id(1L)
+                .email("jane@example.com")
+                .fullName("Jane Doe")
+                .token("sampleToken123")
+                .role("USER")
+                .build();
+
+        org.mockito.Mockito.when(authService.register(org.mockito.ArgumentMatchers.any(com.rememberme.api.dto.request.RegisterRequest.class)))
+                .thenReturn(authResponse);
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("User registered successfully"))
+                .andExpect(jsonPath("$.data.token").value("sampleToken123"));
+    }
+
+    @Test
+    public void register_ShortPassword_ReturnsBadRequest() throws Exception {
+        com.rememberme.api.dto.request.RegisterRequest request = new com.rememberme.api.dto.request.RegisterRequest();
+        request.setFullName("Jane Doe");
+        request.setEmail("jane@example.com");
+        request.setPassword("1234567"); // < 8 characters
+        request.setConfirmPassword("1234567");
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.password").value("Password must be at least 8 characters long."));
+    }
+
+    @Test
+    public void register_MissingConfirmPassword_ReturnsBadRequest() throws Exception {
+        com.rememberme.api.dto.request.RegisterRequest request = new com.rememberme.api.dto.request.RegisterRequest();
+        request.setFullName("Jane Doe");
+        request.setEmail("jane@example.com");
+        request.setPassword("password123");
+        request.setConfirmPassword("");
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.confirmPassword").value("Confirm password is required"));
+    }
+
+    @Test
     public void logout_Success() throws Exception {
         String token = "Bearer sampleToken";
         doNothing().when(authService).logout(token);

@@ -39,6 +39,14 @@ public class AuthService {
     private final EmailService emailService;
 
     public AuthResponse register(RegisterRequest request) {
+        if (request.getPassword() == null || request.getPassword().length() < 8) {
+            throw new ApiException("Password must be at least 8 characters long.", HttpStatus.BAD_REQUEST);
+        }
+
+        if (request.getConfirmPassword() == null || !request.getPassword().equals(request.getConfirmPassword())) {
+            throw new ApiException("Password and Confirm Password must match.", HttpStatus.BAD_REQUEST);
+        }
+
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new ApiException("Email already registered", HttpStatus.BAD_REQUEST);
         }
