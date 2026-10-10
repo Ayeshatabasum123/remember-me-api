@@ -8,18 +8,19 @@ import com.rememberme.api.repository.RememberMeRepository;
 import com.rememberme.api.repository.UserRepository;
 import com.rememberme.api.security.CustomUserDetailsService;
 import com.rememberme.api.security.JwtUtil;
+import com.rememberme.api.service.SearchServiceImpl;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.when;
@@ -27,6 +28,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(SearchController.class)
+@Import(SearchServiceImpl.class)
 @AutoConfigureMockMvc(addFilters = false)
 public class SearchControllerTest {
 
@@ -49,8 +51,8 @@ public class SearchControllerTest {
     private CustomUserDetailsService userDetailsService;
 
     @Test
-    @DisplayName("Search by city found returns Records found and matching records")
-    public void search_ByCity_Found() throws Exception {
+    @DisplayName("Search by city-only found returns Records found and matching records")
+    public void search_ByCityOnly_Found() throws Exception {
         RememberMe memorial = RememberMe.builder()
                 .id(10L)
                 .name("Raj Ghat")
@@ -59,13 +61,13 @@ public class SearchControllerTest {
                 .status(RememberMe.ApprovalStatus.APPROVED)
                 .build();
 
-        when(rememberMeRepository.searchAllFieldsUser(eq("New Delhi"), any()))
+        when(rememberMeRepository.searchByCityAndCountryUser(eq("New Delhi"), isNull(), any()))
                 .thenReturn(List.of(memorial));
-        when(deceasedPersonRepository.searchByNameOrLocationUser(eq("New Delhi"), any()))
+        when(deceasedPersonRepository.searchByCityAndCountryUser(eq("New Delhi"), isNull(), any()))
                 .thenReturn(Collections.emptyList());
 
         mockMvc.perform(get("/api/search")
-                        .param("query", "New Delhi"))
+                        .param("city", "New Delhi"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.message").value("Records found"))
@@ -78,8 +80,8 @@ public class SearchControllerTest {
     }
 
     @Test
-    @DisplayName("Search by country found returns Records found and matching records")
-    public void search_ByCountry_Found() throws Exception {
+    @DisplayName("Search by country-only found returns Records found and matching records")
+    public void search_ByCountryOnly_Found() throws Exception {
         RememberMe memorial = RememberMe.builder()
                 .id(10L)
                 .name("Raj Ghat")
@@ -88,13 +90,13 @@ public class SearchControllerTest {
                 .status(RememberMe.ApprovalStatus.APPROVED)
                 .build();
 
-        when(rememberMeRepository.searchAllFieldsUser(eq("India"), any()))
+        when(rememberMeRepository.searchByCityAndCountryUser(isNull(), eq("India"), any()))
                 .thenReturn(List.of(memorial));
-        when(deceasedPersonRepository.searchByNameOrLocationUser(eq("India"), any()))
+        when(deceasedPersonRepository.searchByCityAndCountryUser(isNull(), eq("India"), any()))
                 .thenReturn(Collections.emptyList());
 
         mockMvc.perform(get("/api/search")
-                        .param("query", "India"))
+                        .param("country", "India"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.message").value("Records found"))
@@ -103,7 +105,57 @@ public class SearchControllerTest {
     }
 
     @Test
-    @DisplayName("Search by non-existent city or country returns 200 with 'No city or country found.'")
+    @DisplayName("Search by combined city and country returns records matching both conditions")
+    public void search_ByCombinedCityAndCountry_Found() throws Exception {
+        RememberMe memorial = RememberMe.builder()
+                .id(10L)
+                .name("Raj Ghat")
+                .city("New Delhi")
+                .country("India")
+                .status(RememberMe.ApprovalStatus.APPROVED)
+                .build();
+
+        when(rememberMeRepository.searchByCityAndCountryUser(eq("New Delhi"), eq("India"), any()))
+                .thenReturn(List.of(memorial));
+        when(deceasedPersonRepository.searchByCityAndCountryUser(eq("New Delhi"), eq("India"), any()))
+                .thenReturn(Collections.emptyList());
+
+        mockMvc.perform(get("/api/search")
+                        .param("city", "New Delhi")
+                        .param("country", "India"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Records found"))
+                .andExpect(jsonPath("$.data.rememberMes[0].city").value("New Delhi"))
+                .andExpect(jsonPath("$.data.rememberMes[0].country").value("India"));
+    }
+
+    @Test
+    @DisplayName("Partial match search via query parameter returns matching records")
+    public void search_ByPartialMatch_Found() throws Exception {
+        RememberMe memorial = RememberMe.builder()
+                .id(10L)
+                .name("Raj Ghat")
+                .city("New Delhi")
+                .country("India")
+                .status(RememberMe.ApprovalStatus.APPROVED)
+                .build();
+
+        when(rememberMeRepository.searchAllFieldsUser(eq("del"), any()))
+                .thenReturn(List.of(memorial));
+        when(deceasedPersonRepository.searchByNameOrLocationUser(eq("del"), any()))
+                .thenReturn(Collections.emptyList());
+
+        mockMvc.perform(get("/api/search")
+                        .param("query", "del"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Records found"))
+                .andExpect(jsonPath("$.data.rememberMes[0].city").value("New Delhi"));
+    }
+
+    @Test
+    @DisplayName("Search by non-existent location query returns 200 with 'No city or country found.'")
     public void search_NotFound_ReturnsNoCityOrCountryFound() throws Exception {
         when(rememberMeRepository.searchAllFieldsUser(eq("Atlantis"), any()))
                 .thenReturn(Collections.emptyList());
@@ -118,6 +170,23 @@ public class SearchControllerTest {
                 .andExpect(jsonPath("$.data.people").isArray())
                 .andExpect(jsonPath("$.data.people").isEmpty())
                 .andExpect(jsonPath("$.data.rememberMes").isArray())
+                .andExpect(jsonPath("$.data.rememberMes").isEmpty());
+    }
+
+    @Test
+    @DisplayName("Search by non-existent city parameter returns 200 with 'No city or country found.'")
+    public void search_NonExistentCity_ReturnsNoCityOrCountryFound() throws Exception {
+        when(rememberMeRepository.searchByCityAndCountryUser(eq("Atlantis"), isNull(), any()))
+                .thenReturn(Collections.emptyList());
+        when(deceasedPersonRepository.searchByCityAndCountryUser(eq("Atlantis"), isNull(), any()))
+                .thenReturn(Collections.emptyList());
+
+        mockMvc.perform(get("/api/search")
+                        .param("city", "Atlantis"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("No city or country found."))
+                .andExpect(jsonPath("$.data.people").isEmpty())
                 .andExpect(jsonPath("$.data.rememberMes").isEmpty());
     }
 
@@ -203,31 +272,6 @@ public class SearchControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.message").value("Records found"))
                 .andExpect(jsonPath("$.data.rememberMes[0].id").value(10));
-    }
-
-    @Test
-    @DisplayName("Explicit city and country parameters work and return matching records")
-    public void search_ByExplicitCityAndCountry_Found() throws Exception {
-        RememberMe memorial = RememberMe.builder()
-                .id(10L)
-                .name("Raj Ghat")
-                .city("New Delhi")
-                .country("India")
-                .status(RememberMe.ApprovalStatus.APPROVED)
-                .build();
-
-        when(rememberMeRepository.searchByCityAndCountryUser(eq("New Delhi"), eq("India"), any()))
-                .thenReturn(List.of(memorial));
-        when(deceasedPersonRepository.searchByCityAndCountryUser(eq("New Delhi"), eq("India"), any()))
-                .thenReturn(Collections.emptyList());
-
-        mockMvc.perform(get("/api/search")
-                        .param("city", "New Delhi")
-                        .param("country", "India"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.message").value("Records found"))
-                .andExpect(jsonPath("$.data.rememberMes[0].city").value("New Delhi"));
     }
 
     @Test
