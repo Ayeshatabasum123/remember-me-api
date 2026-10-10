@@ -167,4 +167,38 @@ public class PhotoUrlValidatorTest {
         ImageIO.write(image, "png", baos);
         return baos.toByteArray();
     }
+
+    @Test
+    public void normalizePhotoUrl_TransformsWikimediaFilePage() {
+        String input = "https://commons.wikimedia.org/wiki/File:Abraham_Lincoln_Tomb.jpg";
+        String normalized = validator.normalizePhotoUrl(input);
+        assertEquals("https://commons.wikimedia.org/wiki/Special:FilePath/Abraham_Lincoln_Tomb.jpg", normalized);
+    }
+
+    @Test
+    public void normalizePhotoUrl_EncodesSpaces() {
+        String input = "https://commons.wikimedia.org/wiki/Special:FilePath/INDIA GATE IN DELHI.jpg";
+        String normalized = validator.normalizePhotoUrl(input);
+        assertEquals("https://commons.wikimedia.org/wiki/Special:FilePath/INDIA%20GATE%20IN%20DELHI.jpg", normalized);
+    }
+
+    @Test
+    public void validatePhotoUrl_ValidWikimediaCommonsUrl_Accepted() {
+        PhotoUrlValidator.ValidationResult result = validator.validatePhotoUrl(
+                "https://upload.wikimedia.org/wikipedia/commons/6/6f/Abraham_Lincoln_Tomb.jpg");
+        assertTrue(result.isValid());
+        assertNull(result.getErrorMessage());
+        assertNotNull(result.getResolvedUrl());
+    }
+
+    @Test
+    public void validatePhotoUrl_SpecialFilePathRedirect_AcceptedAndResolved() {
+        PhotoUrlValidator.ValidationResult result = validator.validatePhotoUrl(
+                "https://commons.wikimedia.org/wiki/Special:FilePath/Abraham_Lincoln_Tomb.jpg");
+        assertTrue(result.isValid());
+        assertNull(result.getErrorMessage());
+        assertNotNull(result.getResolvedUrl());
+        assertTrue(result.getResolvedUrl().contains("upload.wikimedia.org"));
+        assertTrue(result.getResolvedUrl().toLowerCase().contains(".jpg"));
+    }
 }

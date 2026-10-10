@@ -2,11 +2,13 @@ package com.rememberme.api.controller;
 
 import com.rememberme.api.dto.response.ApiResponse;
 import com.rememberme.api.dto.response.GraveImportResponseDto;
+import com.rememberme.api.dto.response.PhotoAuditReportDto;
 import com.rememberme.api.entity.RememberMe;
 import com.rememberme.api.entity.Report;
 import com.rememberme.api.repository.RememberMeRepository;
 import com.rememberme.api.repository.ReportRepository;
 import com.rememberme.api.service.GraveImportService;
+import com.rememberme.api.service.PhotoAuditService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -31,6 +33,7 @@ public class AdminController {
     private final RememberMeRepository rememberMeRepository;
     private final ReportRepository reportRepository;
     private final GraveImportService graveImportService;
+    private final PhotoAuditService photoAuditService;
 
     @PutMapping("/rememberMes/{id}/approve")
     public ApiResponse<RememberMe> approveGraveyard(@PathVariable Long id) {
@@ -81,6 +84,17 @@ public class AdminController {
         String email = principal != null ? principal.getName() : null;
         GraveImportResponseDto result = graveImportService.importGraves(file, email);
         return ApiResponse.success("Graves import completed: " + result.getSuccessfulRecords() + " successful, " + result.getFailedRecords() + " failed", result);
+    }
+
+    @GetMapping({"/photos/audit", "/deceased/photo-audit"})
+    @Operation(
+            summary = "Audit existing photo URLs for accessibility",
+            description = "Checks existing deceased-person photo URLs against accessibility, size, and format rules. Reports inaccessible URLs without modifying the database.",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    public ApiResponse<PhotoAuditReportDto> auditPhotoUrls() {
+        PhotoAuditReportDto report = photoAuditService.auditExistingPhotoUrls();
+        return ApiResponse.success("Photo URL audit completed", report);
     }
 }
 

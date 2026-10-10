@@ -7,9 +7,9 @@ spring:
     name: remember-me-api
 
   datasource:
-    url: postgresql://remember_me_user:zv3pfTZyXSmkn0tfWBPGyAxvNFXwSgJS@dpg-db2930rncjis73drf110-a/remember_me_db_veac
-    username: remember_me_user
-    password: zv3pfTZyXSmkn0tfWBPGyAxvNFXwSgJS
+    url: ${SPRING_DATASOURCE_URL:${DATABASE_URL:jdbc:postgresql://dpg-db2930rncjis73drf110-a.oregon-postgres.render.com/remember_me_db_veac?sslmode=require}}
+    username: ${SPRING_DATASOURCE_USERNAME:remember_me_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:zv3pfTZyXSmkn0tfWBPGyAxvNFXwSgJS}
     driver-class-name: org.postgresql.Driver
 
   jpa:

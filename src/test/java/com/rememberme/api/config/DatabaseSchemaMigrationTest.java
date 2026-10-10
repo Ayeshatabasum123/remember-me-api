@@ -19,7 +19,7 @@ public class DatabaseSchemaMigrationTest {
     private DatabaseSchemaMigration schemaMigration;
 
     @Test
-    public void run_ExecutesSchemaAlterationsAndPurge() {
+    public void run_ExecutesSchemaAlterationsWithoutPurgingData() {
         schemaMigration.run();
 
         // Verify user schema migration
@@ -28,16 +28,10 @@ public class DatabaseSchemaMigrationTest {
         verify(jdbcTemplate, times(1)).execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check");
         verify(jdbcTemplate, times(1)).execute("ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('USER', 'ADMIN'))");
 
-        // Verify module data deletion in strict FK order
-        verify(jdbcTemplate, times(1)).execute("DELETE FROM photos");
-        verify(jdbcTemplate, times(1)).execute("DELETE FROM relationships");
-        verify(jdbcTemplate, times(1)).execute("DELETE FROM memorials");
-        verify(jdbcTemplate, times(1)).execute("DELETE FROM funeral_events");
-        verify(jdbcTemplate, times(1)).execute("DELETE FROM reports");
-        verify(jdbcTemplate, times(1)).execute("DELETE FROM favorites");
-        verify(jdbcTemplate, times(1)).execute("DELETE FROM deceased_persons");
-        verify(jdbcTemplate, times(1)).execute("DELETE FROM graves");
-        verify(jdbcTemplate, times(1)).execute("DELETE FROM graveyards");
+        // Existing module data must NOT be automatically deleted on startup
+        verify(jdbcTemplate, never()).execute("DELETE FROM photos");
+        verify(jdbcTemplate, never()).execute("DELETE FROM graves");
+        verify(jdbcTemplate, never()).execute("DELETE FROM graveyards");
     }
 
     @Test

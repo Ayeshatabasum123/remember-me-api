@@ -87,7 +87,6 @@ public class GraveImportService {
      * Imports grave records and associated cemetery / deceased person data from a multipart CSV or Excel (.xls, .xlsx) file.
      * Protected by ADMIN role verification.
      */
-    @Transactional
     public GraveImportResponseDto importGraves(MultipartFile file, String authenticatedEmail) {
         // Fetch authenticated admin user entity if available
         User adminUser = authenticatedEmail != null ? userRepository.findByEmail(authenticatedEmail).orElse(null) : null;
@@ -127,7 +126,6 @@ public class GraveImportService {
     /**
      * Overloaded method for backward compatibility with existing callers/tests.
      */
-    @Transactional
     public GraveImportResponseDto importGraves(MultipartFile file, String superAdminPassword, String authenticatedEmail) {
         return importGraves(file, authenticatedEmail);
     }
@@ -135,7 +133,6 @@ public class GraveImportService {
     /**
      * Preserves backward compatibility with CSV-specific endpoint/callers.
      */
-    @Transactional
     public GraveImportResponseDto importGravesFromCsv(MultipartFile file, String superAdminPassword, String authenticatedEmail) {
         return importGraves(file, authenticatedEmail);
     }
@@ -367,49 +364,55 @@ public class GraveImportService {
         Map<String, RememberMe> resolvedGraveyardsByName = new HashMap<>();
 
         for (ParsedGraveRow row : validRows) {
-            RememberMe graveyard = resolveOrCreateGraveyard(row, resolvedGraveyardsByName, adminUser);
+            try {
+                RememberMe graveyard = resolveOrCreateGraveyard(row, resolvedGraveyardsByName, adminUser);
 
-            // Check duplicate grave within this specific graveyard in DB
-            if (graveRepository.existsByRememberMeIdAndGraveNumberIgnoreCase(graveyard.getId(), row.getGraveNumber())) {
-                errors.add(new GraveImportErrorDto(row.getRowNumber(),
-                        "Duplicate grave record: Grave number '" + row.getGraveNumber() + "' already exists in cemetery '" +
-                                graveyard.getName() + "' (ID: " + graveyard.getId() + ")"));
-                continue;
+                // Check duplicate grave within this specific graveyard in DB
+                if (graveRepository.existsByRememberMeIdAndGraveNumberIgnoreCase(graveyard.getId(), row.getGraveNumber())) {
+                    errors.add(new GraveImportErrorDto(row.getRowNumber(),
+                            "Duplicate grave record: Grave number '" + row.getGraveNumber() + "' already exists in cemetery '" +
+                                    graveyard.getName() + "' (ID: " + graveyard.getId() + ")"));
+                    continue;
+                }
+
+                // Create and persist Grave
+                LocalDateTime now = LocalDateTime.now();
+                Grave grave = Grave.builder()
+                        .rememberMe(graveyard)
+                        .graveNumber(row.getGraveNumber())
+                        .latitude(row.getLatitude())
+                        .longitude(row.getLongitude())
+                        .locationAccuracy(row.getLocationAccuracy())
+                        .verificationStatus(row.getVerificationStatus() != null ? row.getVerificationStatus() : Grave.VerificationStatus.UNVERIFIED)
+                        .createdAt(now)
+                        .updatedAt(now)
+                        .build();
+
+                grave = graveRepository.save(grave);
+
+                // Create and persist DeceasedPerson record
+                DeceasedPerson deceasedPerson = DeceasedPerson.builder()
+                        .fullName(row.getDeceasedName())
+                        .dateOfBirth(row.getDateOfBirth())
+                        .dateOfDeath(row.getDateOfDeath())
+                        .biography(row.getBiography())
+                        .gender(row.getGender())
+                        .photoUrl(row.getPhotoUrl())
+                        .grave(grave)
+                        .addedBy(adminUser)
+                        .duplicateChecked(true)
+                        .createdAt(now)
+                        .updatedAt(now)
+                        .build();
+
+                deceasedPersonRepository.save(deceasedPerson);
+
+                successfulRecords++;
+            } catch (Exception e) {
+                log.error("Database error saving grave record row {}: {}", row.getRowNumber(), e.getMessage(), e);
+                String rootCause = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
+                errors.add(new GraveImportErrorDto(row.getRowNumber(), "Database error saving grave record: " + rootCause));
             }
-
-            // Create and persist Grave
-            LocalDateTime now = LocalDateTime.now();
-            Grave grave = Grave.builder()
-                    .rememberMe(graveyard)
-                    .graveNumber(row.getGraveNumber())
-                    .latitude(row.getLatitude())
-                    .longitude(row.getLongitude())
-                    .locationAccuracy(row.getLocationAccuracy())
-                    .verificationStatus(row.getVerificationStatus() != null ? row.getVerificationStatus() : Grave.VerificationStatus.UNVERIFIED)
-                    .createdAt(now)
-                    .updatedAt(now)
-                    .build();
-
-            grave = graveRepository.save(grave);
-
-            // Create and persist DeceasedPerson record
-            DeceasedPerson deceasedPerson = DeceasedPerson.builder()
-                    .fullName(row.getDeceasedName())
-                    .dateOfBirth(row.getDateOfBirth())
-                    .dateOfDeath(row.getDateOfDeath())
-                    .biography(row.getBiography())
-                    .gender(row.getGender())
-                    .photoUrl(row.getPhotoUrl())
-                    .grave(grave)
-                    .addedBy(adminUser)
-                    .duplicateChecked(true)
-                    .createdAt(now)
-                    .updatedAt(now)
-                    .build();
-
-            deceasedPersonRepository.save(deceasedPerson);
-
-            successfulRecords++;
         }
 
         int failedRecords = errors.size();
@@ -666,11 +669,15 @@ public class GraveImportService {
         }
 
         // Validate photoUrl if provided
-        if (photoUrl != null && !photoUrl.trim().isEmpty()) {
-            PhotoUrlValidator.ValidationResult photoResult = photoUrlValidator.validatePhotoUrl(photoUrl);
+        String effectivePhotoUrl = (photoUrl != null && !photoUrl.trim().isEmpty()) ? photoUrl.trim() : null;
+        if (effectivePhotoUrl != null) {
+            PhotoUrlValidator.ValidationResult photoResult = photoUrlValidator.validatePhotoUrl(effectivePhotoUrl);
             if (!photoResult.isValid()) {
                 errors.add(new GraveImportErrorDto(rowNumber, photoResult.getErrorMessage()));
                 return;
+            }
+            if (photoResult.getResolvedUrl() != null && !photoResult.getResolvedUrl().trim().isEmpty()) {
+                effectivePhotoUrl = photoResult.getResolvedUrl().trim();
             }
         }
 
@@ -701,7 +708,7 @@ public class GraveImportService {
                 .locationAccuracy(locationAccuracy)
                 .verificationStatus(status)
                 .gender(gender)
-                .photoUrl(photoUrl != null && !photoUrl.trim().isEmpty() ? photoUrl.trim() : null)
+                .photoUrl(effectivePhotoUrl)
                 .build();
 
         validRows.add(parsed);

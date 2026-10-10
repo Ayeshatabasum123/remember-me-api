@@ -56,6 +56,9 @@ public class CorsSecurityTest {
     @MockBean
     private CustomUserDetailsService userDetailsService;
 
+    @MockBean
+    private com.rememberme.api.service.PhotoAuditService photoAuditService;
+
     @Test
     public void options_PreflightLogin_AllowedFlutterOrigin_ReturnsOkWithCorsHeaders() throws Exception {
         mockMvc.perform(options("/api/auth/login")

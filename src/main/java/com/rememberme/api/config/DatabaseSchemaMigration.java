@@ -40,8 +40,6 @@ public class DatabaseSchemaMigration implements CommandLineRunner {
         } catch (Exception e) {
             log.warn("Notice: Schema migration query notice (may be unsupported in test DB or constraint does not exist): {}", e.getMessage());
         }
-
-        purgeSelectedModuleData();
     }
 
     /**

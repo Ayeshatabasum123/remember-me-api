@@ -16,25 +16,32 @@ import java.net.*;
 public class PhotoUrlValidator {
 
     public static final int MAX_IMAGE_SIZE_BYTES = 1024 * 1024; // 1 MB (1,048,576 bytes)
-    private static final int CONNECT_TIMEOUT_MS = 5000;
-    private static final int READ_TIMEOUT_MS = 5000;
-    private static final int MAX_REDIRECTS = 3;
+    private static final int CONNECT_TIMEOUT_MS = 8000;
+    private static final int READ_TIMEOUT_MS = 8000;
+    private static final int MAX_REDIRECTS = 10;
+    private static final String USER_AGENT = "RememberMe-App/1.0 (https://rememberme.org; contact@rememberme.org) Java-HttpsClient/1.0";
 
     public static class ValidationResult {
         private final boolean valid;
         private final String errorMessage;
+        private final String resolvedUrl;
 
-        private ValidationResult(boolean valid, String errorMessage) {
+        private ValidationResult(boolean valid, String errorMessage, String resolvedUrl) {
             this.valid = valid;
             this.errorMessage = errorMessage;
+            this.resolvedUrl = resolvedUrl;
         }
 
         public static ValidationResult success() {
-            return new ValidationResult(true, null);
+            return new ValidationResult(true, null, null);
+        }
+
+        public static ValidationResult success(String resolvedUrl) {
+            return new ValidationResult(true, null, resolvedUrl);
         }
 
         public static ValidationResult failure(String errorMessage) {
-            return new ValidationResult(false, errorMessage);
+            return new ValidationResult(false, errorMessage, null);
         }
 
         public boolean isValid() {
@@ -44,17 +51,71 @@ public class PhotoUrlValidator {
         public String getErrorMessage() {
             return errorMessage;
         }
+
+        public String getResolvedUrl() {
+            return resolvedUrl;
+        }
+    }
+
+    public static class FetchedImage {
+        private final byte[] bytes;
+        private final String resolvedUrl;
+        private final String contentType;
+
+        public FetchedImage(byte[] bytes, String resolvedUrl, String contentType) {
+            this.bytes = bytes;
+            this.resolvedUrl = resolvedUrl;
+            this.contentType = contentType;
+        }
+
+        public byte[] getBytes() {
+            return bytes;
+        }
+
+        public String getResolvedUrl() {
+            return resolvedUrl;
+        }
+
+        public String getContentType() {
+            return contentType;
+        }
+    }
+
+    /**
+     * Normalizes Wikimedia Commons and Wikipedia photo URLs to direct file paths.
+     */
+    public String normalizePhotoUrl(String photoUrl) {
+        if (photoUrl == null || photoUrl.trim().isEmpty()) {
+            return photoUrl;
+        }
+        String cleanUrl = photoUrl.trim().replace(" ", "%20");
+        String lower = cleanUrl.toLowerCase();
+
+        // Convert Wikimedia Commons or Wikipedia /wiki/File:Page.jpg to /wiki/Special:FilePath/Page.jpg
+        if (lower.contains("wikimedia.org/wiki/file:") || lower.contains("wikipedia.org/wiki/file:")) {
+            int fileIdx = lower.indexOf("/wiki/file:") + 11;
+            String fileName = cleanUrl.substring(fileIdx);
+            if (lower.contains("commons.wikimedia.org")) {
+                return "https://commons.wikimedia.org/wiki/Special:FilePath/" + fileName;
+            } else if (lower.contains(".wikipedia.org")) {
+                int hostEnd = lower.indexOf("/wiki/file:");
+                String hostPart = cleanUrl.substring(0, hostEnd);
+                return hostPart + "/wiki/Special:FilePath/" + fileName;
+            }
+        }
+        return cleanUrl;
     }
 
     /**
      * Validates an external photo URL according to security, accessibility, size, and JPEG format rules.
+     * Follows HTTP redirects (301, 302, 303, 307, 308) and returns the final resolved image URL upon success.
      */
     public ValidationResult validatePhotoUrl(String photoUrl) {
         if (photoUrl == null || photoUrl.trim().isEmpty()) {
-            return ValidationResult.success();
+            return ValidationResult.success(null);
         }
 
-        String cleanUrl = photoUrl.trim();
+        String cleanUrl = normalizePhotoUrl(photoUrl);
 
         // 1. Protocol check: must use HTTPS
         if (!cleanUrl.toLowerCase().startsWith("https://")) {
@@ -74,7 +135,8 @@ public class PhotoUrlValidator {
             if (path.contains(".")) {
                 String ext = path.substring(path.lastIndexOf('.'));
                 if (ext.equals(".png") || ext.equals(".gif") || ext.equals(".webp") || ext.equals(".svg")
-                        || ext.equals(".bmp") || ext.equals(".tiff") || ext.equals(".pdf") || ext.equals(".html")) {
+                        || ext.equals(".bmp") || ext.equals(".tiff") || ext.equals(".pdf") || ext.equals(".html")
+                        || ext.equals(".htm")) {
                     return ValidationResult.failure("Only JPG and JPEG image URLs are allowed.");
                 }
             }
@@ -84,11 +146,13 @@ public class PhotoUrlValidator {
                 return ValidationResult.failure("Image URL is not accessible.");
             }
 
-            // 3. Fetch image bytes with safe redirects, timeouts, and bounded buffer
-            byte[] imageBytes = fetchImageBytesWithLimits(url);
-            if (imageBytes == null) {
+            // 3. Fetch image bytes with safe redirects (301, 302, 303, 307, 308), timeouts, and bounded buffer
+            FetchedImage fetched = fetchImageWithLimits(url);
+            if (fetched == null || fetched.getBytes() == null) {
                 return ValidationResult.failure("Image URL is not accessible.");
             }
+
+            byte[] imageBytes = fetched.getBytes();
 
             if (imageBytes.length > MAX_IMAGE_SIZE_BYTES) {
                 return ValidationResult.failure("Image size must not exceed 1 MB.");
@@ -112,12 +176,16 @@ public class PhotoUrlValidator {
                 return ValidationResult.failure("Invalid or corrupted JPEG image.");
             }
 
-            return ValidationResult.success();
+            return ValidationResult.success(fetched.getResolvedUrl());
 
-        } catch (MalformedURLException | IllegalArgumentException e) {
+        } catch (NonJpgImageException e) {
             return ValidationResult.failure("Only JPG and JPEG image URLs are allowed.");
+        } catch (NonImageContentTypeException e) {
+            return ValidationResult.failure("Image URL is not accessible.");
         } catch (ImageSizeExceededException e) {
             return ValidationResult.failure("Image size must not exceed 1 MB.");
+        } catch (MalformedURLException | IllegalArgumentException e) {
+            return ValidationResult.failure("Only JPG and JPEG image URLs are allowed.");
         } catch (Exception e) {
             log.warn("Photo URL validation failed for {}: {}", cleanUrl, e.getMessage());
             return ValidationResult.failure("Image URL is not accessible.");
@@ -194,7 +262,7 @@ public class PhotoUrlValidator {
         }
     }
 
-    private byte[] fetchImageBytesWithLimits(URL initialUrl) throws Exception {
+    private FetchedImage fetchImageWithLimits(URL initialUrl) throws Exception {
         URL currentUrl = initialUrl;
         int redirects = 0;
 
@@ -214,44 +282,69 @@ public class PhotoUrlValidator {
             httpsConn.setInstanceFollowRedirects(false);
             httpsConn.setConnectTimeout(CONNECT_TIMEOUT_MS);
             httpsConn.setReadTimeout(READ_TIMEOUT_MS);
-            httpsConn.setRequestProperty("User-Agent", "RememberMe-PhotoValidator/1.0");
-            httpsConn.setRequestProperty("Accept", "image/jpeg,image/jpg,image/*");
+            httpsConn.setRequestProperty("User-Agent", USER_AGENT);
+            httpsConn.setRequestProperty("Accept", "image/jpeg,image/jpg,image/*,*/*;q=0.8");
 
-            httpsConn.connect();
-            int responseCode = httpsConn.getResponseCode();
+            try {
+                httpsConn.connect();
+                int responseCode = httpsConn.getResponseCode();
 
-            if (responseCode >= 300 && responseCode < 400) {
-                String location = httpsConn.getHeaderField("Location");
-                if (location == null || location.trim().isEmpty()) {
+                // Explicitly support HTTP 301, 302, 303, 307, and 308 redirects
+                boolean isRedirect = (responseCode == HttpURLConnection.HTTP_MOVED_PERM
+                        || responseCode == HttpURLConnection.HTTP_MOVED_TEMP
+                        || responseCode == HttpURLConnection.HTTP_SEE_OTHER
+                        || responseCode == 307
+                        || responseCode == 308);
+
+                if (isRedirect) {
+                    String location = httpsConn.getHeaderField("Location");
+                    if (location == null || location.trim().isEmpty()) {
+                        return null;
+                    }
+                    location = location.trim().replace(" ", "%20");
+                    currentUrl = new URL(currentUrl, location);
+                    redirects++;
+                    continue;
+                }
+
+                if (responseCode != HttpsURLConnection.HTTP_OK) {
                     return null;
                 }
-                currentUrl = new URL(currentUrl, location);
-                redirects++;
-                continue;
-            }
 
-            if (responseCode != HttpsURLConnection.HTTP_OK) {
-                return null;
-            }
-
-            long contentLength = httpsConn.getContentLengthLong();
-            if (contentLength > MAX_IMAGE_SIZE_BYTES) {
-                throw new ImageSizeExceededException();
-            }
-
-            try (InputStream in = httpsConn.getInputStream();
-                 ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-                byte[] buffer = new byte[8192];
-                int totalRead = 0;
-                int n;
-                while ((n = in.read(buffer)) != -1) {
-                    totalRead += n;
-                    if (totalRead > MAX_IMAGE_SIZE_BYTES) {
-                        throw new ImageSizeExceededException();
+                // Check content type on final OK response
+                String contentType = httpsConn.getContentType();
+                if (contentType != null) {
+                    String lower = contentType.toLowerCase().trim();
+                    if (lower.startsWith("text/html") || lower.startsWith("text/plain") || lower.startsWith("application/json")) {
+                        throw new NonImageContentTypeException();
                     }
-                    out.write(buffer, 0, n);
+                    if (lower.startsWith("image/png") || lower.startsWith("image/gif") || lower.startsWith("image/webp")
+                            || lower.startsWith("image/svg") || lower.startsWith("image/bmp")) {
+                        throw new NonJpgImageException();
+                    }
                 }
-                return out.toByteArray();
+
+                long contentLength = httpsConn.getContentLengthLong();
+                if (contentLength > MAX_IMAGE_SIZE_BYTES) {
+                    throw new ImageSizeExceededException();
+                }
+
+                try (InputStream in = httpsConn.getInputStream();
+                     ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                    byte[] buffer = new byte[8192];
+                    int totalRead = 0;
+                    int n;
+                    while ((n = in.read(buffer)) != -1) {
+                        totalRead += n;
+                        if (totalRead > MAX_IMAGE_SIZE_BYTES) {
+                            throw new ImageSizeExceededException();
+                        }
+                        out.write(buffer, 0, n);
+                    }
+                    return new FetchedImage(out.toByteArray(), currentUrl.toString(), contentType);
+                }
+            } finally {
+                httpsConn.disconnect();
             }
         }
         return null;
@@ -289,4 +382,6 @@ public class PhotoUrlValidator {
     }
 
     public static class ImageSizeExceededException extends RuntimeException {}
+    public static class NonJpgImageException extends RuntimeException {}
+    public static class NonImageContentTypeException extends RuntimeException {}
 }
