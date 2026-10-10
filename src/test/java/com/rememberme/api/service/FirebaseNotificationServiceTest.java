@@ -26,6 +26,8 @@ class FirebaseNotificationServiceTest {
 
     @BeforeEach
     void setUp() {
+        com.rememberme.api.config.FirebaseConfig.setMockMode(false);
+        com.rememberme.api.config.FirebaseConfig.setUnconfigured(false);
         service = new FirebaseNotificationService(firebaseMessaging);
     }
 

@@ -51,6 +51,14 @@ public class FirebaseConfig {
         return unconfiguredReason;
     }
 
+    public static void setMockMode(boolean mock) {
+        mockMode = mock;
+    }
+
+    public static void setUnconfigured(boolean unconfiguredState) {
+        unconfigured = unconfiguredState;
+    }
+
     @Bean
     public FirebaseApp firebaseApp() {
         if (!FirebaseApp.getApps().isEmpty()) {

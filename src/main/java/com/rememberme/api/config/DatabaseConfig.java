@@ -16,7 +16,7 @@ import java.net.URI;
 @Slf4j
 public class DatabaseConfig {
 
-    @Value("${spring.datasource.url}")
+    @Value("${spring.datasource.url:${DATABASE_URL:jdbc:postgresql://dpg-db2930rncjis73drf110-a.oregon-postgres.render.com/remember_me_db_veac?sslmode=require}}")
     private String configuredUrl;
 
     @Value("${spring.datasource.username:remember_me_user}")

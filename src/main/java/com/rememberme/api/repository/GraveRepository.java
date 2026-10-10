@@ -1,6 +1,7 @@
 package com.rememberme.api.repository;
 
 import com.rememberme.api.entity.Grave;
+import com.rememberme.api.entity.RememberMe;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -31,12 +32,17 @@ public interface GraveRepository extends JpaRepository<Grave, Long> {
     List<Grave> searchByCityAndCountryAdmin(@Param("city") String city,
                                             @Param("country") String country);
 
+    default List<Grave> searchByCityAndCountryUser(String city, String country, Long userId) {
+        return searchByCityAndCountryUser(city, country, userId, RememberMe.ApprovalStatus.APPROVED);
+    }
+
     @Query("SELECT g FROM Grave g WHERE " +
-           "(g.rememberMe.status = com.rememberme.api.entity.RememberMe.ApprovalStatus.APPROVED " +
+           "(g.rememberMe.status = :approvedStatus " +
            " OR (:userId IS NOT NULL AND g.rememberMe.managedBy.id = :userId)) AND " +
            "(:city IS NULL OR LOWER(g.rememberMe.city) LIKE LOWER(CONCAT('%', :city, '%'))) AND " +
            "(:country IS NULL OR LOWER(g.rememberMe.country) LIKE LOWER(CONCAT('%', :country, '%')))")
     List<Grave> searchByCityAndCountryUser(@Param("city") String city,
                                            @Param("country") String country,
-                                           @Param("userId") Long userId);
+                                           @Param("userId") Long userId,
+                                           @Param("approvedStatus") RememberMe.ApprovalStatus approvedStatus);
 }

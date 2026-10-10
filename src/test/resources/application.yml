@@ -1,2 +1,43 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: remember-me-api
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:${DATABASE_URL:jdbc:postgresql://dpg-db2930rncjis73drf110-a.oregon-postgres.render.com/remember_me_db_veac?sslmode=require}}
+    username: ${SPRING_DATASOURCE_USERNAME:remember_me_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:zv3pfTZyXSmkn0tfWBPGyAxvNFXwSgJS}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: test@gmail.com
+    password: testpassword
+
+jwt:
+  secret: 557fd23bca817f0f74e9e59be9bf305915cbbe2ae5400474002aa1e2a2aa4a8f3d0cdc7011dccbc05435dc0b74bb25ff4724af8070955390ba0d97b9c79db53b
+  expiration: 86400000
+  refresh-expiration: 604800000
+
 firebase:
-  enable-mock: true
+  enable-mock: false
+
+app:
+  admin:
+    create-test-admin: false
+    email: admin-test@example.com
+    password: Admin@123
+  super-admin:
+    password: SuperAdmin@123
