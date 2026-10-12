@@ -1,13 +1,16 @@
 package com.rememberme.api.controller;
 
-import com.rememberme.api.dto.response.ApiResponse;
-import com.rememberme.api.dto.response.GraveImportResponseDto;
-import com.rememberme.api.dto.response.PhotoAuditReportDto;
+import com.rememberme.api.dto.request.AdminRegisterRequest;
+import com.rememberme.api.dto.request.CreateEventRequest;
+import com.rememberme.api.dto.request.UpdateEventRequest;
+import com.rememberme.api.dto.response.*;
 import com.rememberme.api.entity.RememberMe;
 import com.rememberme.api.entity.Report;
 import com.rememberme.api.repository.RememberMeRepository;
 import com.rememberme.api.repository.ReportRepository;
+import com.rememberme.api.service.EventService;
 import com.rememberme.api.service.GraveImportService;
+import com.rememberme.api.service.OrganizationService;
 import com.rememberme.api.service.PhotoAuditService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -15,6 +18,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -25,17 +29,82 @@ import java.security.Principal;
 
 @RestController
 @RequestMapping("/api/admin")
-@PreAuthorize("hasRole('ADMIN')")
 @RequiredArgsConstructor
-@Tag(name = "Admin", description = "Approve/edit/remove rememberMes, duplicate entries, and bulk import graves")
+@Tag(name = "Admin", description = "Admin & Organization registration, event management, and system operations")
 public class AdminController {
 
     private final RememberMeRepository rememberMeRepository;
     private final ReportRepository reportRepository;
     private final GraveImportService graveImportService;
     private final PhotoAuditService photoAuditService;
+    private final OrganizationService organizationService;
+    private final EventService eventService;
+
+    // --- RELIGIOUS ORGANIZATION ADMIN REGISTRATION (PUBLIC) ---
+
+    @PostMapping(value = "/register", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("permitAll()")
+    @Operation(summary = "Register Religious Organization & Admin (Multipart)", description = "Allows an Admin to register a religious organization with photograph upload")
+    public ApiResponse<AdminRegisterResponse> registerAdminMultipart(
+            @ModelAttribute AdminRegisterRequest request,
+            @RequestPart(value = "photograph", required = false) MultipartFile photograph) {
+        MultipartFile file = photograph != null ? photograph : request.getPhotograph();
+        AdminRegisterResponse response = organizationService.registerAdminAndOrganization(request, file);
+        return ApiResponse.success("Admin and organization registered successfully. Status: PENDING", response);
+    }
+
+    @PostMapping(value = "/register", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("permitAll()")
+    @Operation(summary = "Register Religious Organization & Admin (JSON)", description = "Allows an Admin to register a religious organization with a photograph URL")
+    public ApiResponse<AdminRegisterResponse> registerAdminJson(@Valid @RequestBody AdminRegisterRequest request) {
+        AdminRegisterResponse response = organizationService.registerAdminAndOrganization(request, null);
+        return ApiResponse.success("Admin and organization registered successfully. Status: PENDING", response);
+    }
+
+    private String getAuthenticatedEmail(Principal principal) {
+        if (principal != null && org.springframework.util.StringUtils.hasText(principal.getName())) {
+            return principal.getName();
+        }
+        org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && org.springframework.util.StringUtils.hasText(auth.getName())) {
+            return auth.getName();
+        }
+        throw new com.rememberme.api.exception.ApiException("Authentication required", org.springframework.http.HttpStatus.UNAUTHORIZED);
+    }
+
+    // --- EVENT MANAGEMENT ---
+
+    @PostMapping("/events")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Create Event", description = "Allows approved organization Admin to create a draft event", security = @SecurityRequirement(name = "bearerAuth"))
+    public ApiResponse<EventResponseDto> createEvent(@Valid @RequestBody CreateEventRequest request, Principal principal) {
+        EventResponseDto created = eventService.createEvent(getAuthenticatedEmail(principal), request);
+        return ApiResponse.success("Event created successfully in DRAFT status", created);
+    }
+
+    @PutMapping("/events/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Update Event", description = "Allows approved organization Admin to update an event", security = @SecurityRequirement(name = "bearerAuth"))
+    public ApiResponse<EventResponseDto> updateEvent(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateEventRequest request,
+            Principal principal) {
+        EventResponseDto updated = eventService.updateEvent(getAuthenticatedEmail(principal), id, request);
+        return ApiResponse.success("Event updated successfully", updated);
+    }
+
+    @PostMapping("/events/{id}/publish")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Publish Event", description = "Publishes event and triggers postcode-based notifications to registered users", security = @SecurityRequirement(name = "bearerAuth"))
+    public ApiResponse<EventResponseDto> publishEvent(@PathVariable Long id, Principal principal) {
+        EventResponseDto published = eventService.publishEvent(getAuthenticatedEmail(principal), id);
+        return ApiResponse.success("Event published successfully and notifications dispatched", published);
+    }
+
+    // --- LEGACY ADMIN OPERATIONS ---
 
     @PutMapping("/rememberMes/{id}/approve")
+    @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<RememberMe> approveGraveyard(@PathVariable Long id) {
         RememberMe rememberMe = rememberMeRepository.findById(id).orElseThrow();
         rememberMe.setStatus(RememberMe.ApprovalStatus.APPROVED);
@@ -43,6 +112,7 @@ public class AdminController {
     }
 
     @PutMapping("/rememberMes/{id}/reject")
+    @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<RememberMe> rejectGraveyard(@PathVariable Long id) {
         RememberMe rememberMe = rememberMeRepository.findById(id).orElseThrow();
         rememberMe.setStatus(RememberMe.ApprovalStatus.REJECTED);
@@ -50,6 +120,7 @@ public class AdminController {
     }
 
     @PutMapping("/reports/{id}/resolve")
+    @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<Report> resolveReport(@PathVariable Long id) {
         Report report = reportRepository.findById(id).orElseThrow();
         report.setStatus(Report.ReportStatus.RESOLVED);
@@ -57,6 +128,7 @@ public class AdminController {
     }
 
     @PostMapping("/notifications/broadcast-vip")
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(
             summary = "Broadcast a VIP / National Funeral push notification",
             security = @SecurityRequirement(name = "bearerAuth"))
@@ -68,9 +140,10 @@ public class AdminController {
     }
 
     @PostMapping(value = "/graves/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(
             summary = "Bulk import grave/cemetery records from a CSV or Excel file",
-            description = "Validates and imports grave records from a CSV (.csv) or Excel (.xls, .xlsx) file. Supports dateOfBirth and dateOfDeath in both DD/MM/YYYY and DD-MM-YYYY formats, as well as native Excel date cells. Required columns: serialNumber, cemeteryName, graveNumber, latitude, longitude, deceasedName, dateOfBirth, dateOfDeath, biography (max 200 chars). Protected by ADMIN role.",
+            description = "Validates and imports grave records from a CSV (.csv) or Excel (.xls, .xlsx) file. Protected by ADMIN role.",
             security = @SecurityRequirement(name = "bearerAuth")
     )
     public ApiResponse<GraveImportResponseDto> importGraves(
@@ -87,6 +160,7 @@ public class AdminController {
     }
 
     @GetMapping({"/photos/audit", "/deceased/photo-audit"})
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(
             summary = "Audit existing photo URLs for accessibility",
             description = "Checks existing deceased-person photo URLs against accessibility, size, and format rules. Reports inaccessible URLs without modifying the database.",
@@ -97,4 +171,3 @@ public class AdminController {
         return ApiResponse.success("Photo URL audit completed", report);
     }
 }
-

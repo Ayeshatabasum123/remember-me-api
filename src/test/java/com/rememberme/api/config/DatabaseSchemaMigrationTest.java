@@ -22,11 +22,14 @@ public class DatabaseSchemaMigrationTest {
     public void run_ExecutesSchemaAlterationsWithoutPurgingData() {
         schemaMigration.run();
 
-        // Verify user schema migration
-        verify(jdbcTemplate, times(1)).execute("UPDATE users SET role = 'ADMIN' WHERE role IN ('SUPER_ADMIN', 'GRAVEYARD_ADMIN')");
-        verify(jdbcTemplate, times(1)).execute("UPDATE users SET role = 'USER' WHERE role IS NULL OR role NOT IN ('ADMIN', 'USER')");
+        // Verify user schema migration with SUPER_ADMIN, ADMIN, USER and postcode columns
+        verify(jdbcTemplate, times(1)).execute("UPDATE users SET role = 'USER' WHERE role IS NULL OR role NOT IN ('SUPER_ADMIN', 'ADMIN', 'USER')");
         verify(jdbcTemplate, times(1)).execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check");
-        verify(jdbcTemplate, times(1)).execute("ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('USER', 'ADMIN'))");
+        verify(jdbcTemplate, times(1)).execute("ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('USER', 'ADMIN', 'SUPER_ADMIN'))");
+        verify(jdbcTemplate, times(1)).execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS postcode VARCHAR(20)");
+        verify(jdbcTemplate, times(1)).execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS postcode_normalized VARCHAR(20)");
+        verify(jdbcTemplate, times(1)).execute("CREATE INDEX IF NOT EXISTS idx_users_postcode_normalized ON users(postcode_normalized)");
+        verify(jdbcTemplate, times(1)).execute("CREATE SEQUENCE IF NOT EXISTS organization_code_seq START WITH 1 INCREMENT BY 1");
 
         // Existing module data must NOT be automatically deleted on startup
         verify(jdbcTemplate, never()).execute("DELETE FROM photos");

@@ -35,8 +35,10 @@ public class SecurityConfig {
 
     private static final String[] PUBLIC_ENDPOINTS = {
         "/api/auth/**",
+        "/api/postcodes/**",
         "/api/graveyards/search/**",
         "/api/search/**",
+        "/uploads/**",
         "/swagger-ui.html",
         "/swagger-ui/**",
         "/api-docs/**",
@@ -59,13 +61,15 @@ public class SecurityConfig {
                         .accessDeniedHandler((request, response, accessDeniedException) -> {
                             response.setStatus(HttpServletResponse.SC_FORBIDDEN);
                             response.setContentType("application/json");
-                            response.getWriter().write("{\"success\":false,\"message\":\"Access Denied: Admin role required\",\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Access denied: insufficient permissions\"}}");
+                            response.getWriter().write("{\"success\":false,\"message\":\"Access Denied: Insufficient permissions\",\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Access denied: insufficient permissions\"}}");
                         })
                 )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
-                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/admin/register").permitAll()
+                        .requestMatchers("/api/super-admin/**").hasRole("SUPER_ADMIN")
+                        .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

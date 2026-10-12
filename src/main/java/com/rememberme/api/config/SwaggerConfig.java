@@ -16,8 +16,8 @@ public class SwaggerConfig {
         final String securitySchemeName = "bearerAuth";
         return new OpenAPI()
                 .info(new Info()
-                        .title("Remember Me API")
-                        .description("Backend REST API for digital memorials and remembering loved ones")
+                        .title("Religious Organization Event & Postcode Notification System API")
+                        .description("Backend REST API for Religious Organization Event Management, UK Postcodes.io Integration, and Postcode-Based Push Notifications")
                         .version("1.0.0"))
                 .addSecurityItem(new SecurityRequirement().addList(securitySchemeName))
                 .components(new Components()

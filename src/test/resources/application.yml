@@ -40,4 +40,6 @@ app:
     email: admin-test@example.com
     password: Admin@123
   super-admin:
+    create-super-admin: false
+    email: superadmin@rememberme.com
     password: SuperAdmin@123

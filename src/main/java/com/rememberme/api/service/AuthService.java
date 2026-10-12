@@ -70,6 +70,7 @@ public class AuthService {
 
         return AuthResponse.builder()
                 .id(user.getId())
+                .userId(user.getId())
                 .token(token)
                 .email(user.getEmail())
                 .fullName(user.getFullName())
@@ -95,6 +96,7 @@ public class AuthService {
 
         return AuthResponse.builder()
                 .id(user.getId())
+                .userId(user.getId())
                 .token(token)
                 .email(user.getEmail())
                 .fullName(user.getFullName())

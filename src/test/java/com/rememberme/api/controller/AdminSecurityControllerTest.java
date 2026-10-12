@@ -66,6 +66,12 @@ public class AdminSecurityControllerTest {
     @MockBean
     private com.rememberme.api.service.PhotoAuditService photoAuditService;
 
+    @MockBean
+    private com.rememberme.api.service.OrganizationService organizationService;
+
+    @MockBean
+    private com.rememberme.api.service.EventService eventService;
+
     private RememberMe mockRememberMe;
     private Report mockReport;
 

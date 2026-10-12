@@ -10,7 +10,9 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "users")
+@Table(name = "users", indexes = {
+    @Index(name = "idx_users_postcode_normalized", columnList = "postcode_normalized")
+})
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -41,9 +43,14 @@ public class User {
     private String fcmToken;
 
     @Enumerated(EnumType.STRING)
-    @org.hibernate.annotations.Check(constraints = "role IN ('USER', 'ADMIN')")
+    @org.hibernate.annotations.Check(constraints = "role IN ('USER', 'ADMIN', 'SUPER_ADMIN')")
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private Role role;
+
+    private String postcode;
+
+    @Column(name = "postcode_normalized")
+    private String postcodeNormalized;
 
     private boolean emailVerified;
     private boolean phoneVerified;
@@ -53,6 +60,6 @@ public class User {
     private LocalDateTime updatedAt;
 
     public enum Role {
-        USER, ADMIN
+        USER, ADMIN, SUPER_ADMIN
     }
 }

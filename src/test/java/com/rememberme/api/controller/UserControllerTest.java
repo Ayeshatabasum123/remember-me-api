@@ -45,6 +45,12 @@ public class UserControllerTest {
     @MockBean
     private CustomUserDetailsService userDetailsService;
 
+    @MockBean
+    private com.rememberme.api.service.PostcodeService postcodeService;
+
+    @MockBean
+    private com.rememberme.api.service.NotificationManagementService notificationManagementService;
+
     private User mockAdmin;
     private User mockUser;
 

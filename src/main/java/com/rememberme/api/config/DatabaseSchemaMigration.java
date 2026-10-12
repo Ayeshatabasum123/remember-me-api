@@ -20,11 +20,14 @@ public class DatabaseSchemaMigration implements CommandLineRunner {
     @Transactional
     public void run(String... args) {
         try {
-            log.info("Executing database schema migration: Updating user roles and constraints to support ADMIN and USER only...");
-            jdbcTemplate.execute("UPDATE users SET role = 'ADMIN' WHERE role IN ('SUPER_ADMIN', 'GRAVEYARD_ADMIN')");
-            jdbcTemplate.execute("UPDATE users SET role = 'USER' WHERE role IS NULL OR role NOT IN ('ADMIN', 'USER')");
+            log.info("Executing database schema migration: Updating user roles and constraints to support SUPER_ADMIN, ADMIN and USER...");
+            jdbcTemplate.execute("UPDATE users SET role = 'USER' WHERE role IS NULL OR role NOT IN ('SUPER_ADMIN', 'ADMIN', 'USER')");
             jdbcTemplate.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check");
-            jdbcTemplate.execute("ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('USER', 'ADMIN'))");
+            jdbcTemplate.execute("ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('USER', 'ADMIN', 'SUPER_ADMIN'))");
+            jdbcTemplate.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS postcode VARCHAR(20)");
+            jdbcTemplate.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS postcode_normalized VARCHAR(20)");
+            jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_users_postcode_normalized ON users(postcode_normalized)");
+            jdbcTemplate.execute("CREATE SEQUENCE IF NOT EXISTS organization_code_seq START WITH 1 INCREMENT BY 1");
             jdbcTemplate.execute("ALTER TABLE graveyards ADD COLUMN IF NOT EXISTS is_famous boolean NOT NULL DEFAULT false");
             jdbcTemplate.execute("ALTER TABLE graveyards ADD COLUMN IF NOT EXISTS is_historical boolean NOT NULL DEFAULT false");
             jdbcTemplate.execute("ALTER TABLE graveyards ADD COLUMN IF NOT EXISTS historical_details text");
