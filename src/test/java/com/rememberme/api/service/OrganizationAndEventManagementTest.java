@@ -19,7 +19,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -84,6 +86,7 @@ public class OrganizationAndEventManagementTest {
 
     @Test
     public void registerAdminAndOrganization_InitialStatusIsPending() {
+        MockMultipartFile photo = new MockMultipartFile("photograph", "church.jpg", "image/jpeg", new byte[]{1, 2, 3});
         AdminRegisterRequest request = AdminRegisterRequest.builder()
                 .organizationName("Grace Church")
                 .organizationType(OrganizationType.CHURCH)
@@ -94,7 +97,7 @@ public class OrganizationAndEventManagementTest {
                 .postcode("E1 6AN")
                 .latitude(51.52)
                 .longitude(-0.07)
-                .photoUrl("https://example.com/church.jpg")
+                .photograph(photo)
                 .build();
 
         when(userRepository.existsByEmail("admin@gracechurch.org")).thenReturn(false);
@@ -104,6 +107,8 @@ public class OrganizationAndEventManagementTest {
         );
         when(postcodeService.normalizePostcode("E1 6AN")).thenReturn("E16AN");
         when(passwordEncoder.encode("Password123")).thenReturn("encoded_pass");
+        when(fileStorageService.storeOrganizationPhoto(any(MultipartFile.class)))
+                .thenReturn("/uploads/organizations/church.jpg");
 
         when(userRepository.save(any(User.class))).thenAnswer(i -> {
             User u = i.getArgument(0);
@@ -117,14 +122,145 @@ public class OrganizationAndEventManagementTest {
             return o;
         });
 
-        AdminRegisterResponse response = organizationService.registerAdminAndOrganization(request, null);
+        AdminRegisterResponse response = organizationService.registerAdminAndOrganization(request, photo);
 
         assertNotNull(response);
         assertEquals(1L, response.getUserId());
         assertEquals("ADMIN", response.getRole());
         assertEquals(OrganizationApprovalStatus.PENDING, response.getOrganization().getApprovalStatus());
+        assertEquals("/uploads/organizations/church.jpg", response.getOrganization().getPhotoUrl());
         assertNull(response.getOrganization().getOrganizationCode());
     }
+
+    @Test
+    public void registerAdminAndOrganization_PhotographMissing_ThrowsBadRequest() {
+        AdminRegisterRequest request = AdminRegisterRequest.builder()
+                .organizationName("Grace Church")
+                .organizationType(OrganizationType.CHURCH)
+                .email("admin@gracechurch.org")
+                .phone("+442079460000")
+                .password("Password123")
+                .confirmPassword("Password123")
+                .postcode("E1 6AN")
+                .latitude(51.52)
+                .longitude(-0.07)
+                .photograph(null)
+                .build();
+
+        when(userRepository.existsByEmail("admin@gracechurch.org")).thenReturn(false);
+        when(organizationRepository.existsByEmail("admin@gracechurch.org")).thenReturn(false);
+        when(postcodeService.validatePostcode("E1 6AN")).thenReturn(
+                PostcodeValidationResponse.builder().valid(true).postcode("E1 6AN").build()
+        );
+
+        ApiException ex = assertThrows(ApiException.class, () ->
+                organizationService.registerAdminAndOrganization(request, null));
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatus());
+        assertEquals("Organization photograph is required", ex.getMessage());
+    }
+
+    @Test
+    public void registerAdminAndOrganization_PhotographEmpty_ThrowsBadRequest() {
+        MockMultipartFile emptyPhoto = new MockMultipartFile("photograph", "church.jpg", "image/jpeg", new byte[0]);
+        AdminRegisterRequest request = AdminRegisterRequest.builder()
+                .organizationName("Grace Church")
+                .organizationType(OrganizationType.CHURCH)
+                .email("admin@gracechurch.org")
+                .phone("+442079460000")
+                .password("Password123")
+                .confirmPassword("Password123")
+                .postcode("E1 6AN")
+                .latitude(51.52)
+                .longitude(-0.07)
+                .photograph(emptyPhoto)
+                .build();
+
+        when(userRepository.existsByEmail("admin@gracechurch.org")).thenReturn(false);
+        when(organizationRepository.existsByEmail("admin@gracechurch.org")).thenReturn(false);
+        when(postcodeService.validatePostcode("E1 6AN")).thenReturn(
+                PostcodeValidationResponse.builder().valid(true).postcode("E1 6AN").build()
+        );
+
+        ApiException ex = assertThrows(ApiException.class, () ->
+                organizationService.registerAdminAndOrganization(request, emptyPhoto));
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatus());
+        assertEquals("Organization photograph is required", ex.getMessage());
+    }
+
+    @Test
+    public void registerAdminAndOrganization_PasswordMismatch_ThrowsBadRequest() {
+        MockMultipartFile photo = new MockMultipartFile("photograph", "church.jpg", "image/jpeg", new byte[]{1, 2, 3});
+        AdminRegisterRequest request = AdminRegisterRequest.builder()
+                .organizationName("Grace Church")
+                .organizationType(OrganizationType.CHURCH)
+                .email("admin@gracechurch.org")
+                .phone("+442079460000")
+                .password("Password123")
+                .confirmPassword("MismatchPass456")
+                .postcode("E1 6AN")
+                .latitude(51.52)
+                .longitude(-0.07)
+                .photograph(photo)
+                .build();
+
+        ApiException ex = assertThrows(ApiException.class, () ->
+                organizationService.registerAdminAndOrganization(request, photo));
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatus());
+        assertEquals("Password and confirm password must match", ex.getMessage());
+    }
+
+    @Test
+    public void registerAdminAndOrganization_InvalidPostcode_ThrowsBadRequest() {
+        MockMultipartFile photo = new MockMultipartFile("photograph", "church.jpg", "image/jpeg", new byte[]{1, 2, 3});
+        AdminRegisterRequest request = AdminRegisterRequest.builder()
+                .organizationName("Grace Church")
+                .organizationType(OrganizationType.CHURCH)
+                .email("admin@gracechurch.org")
+                .phone("+442079460000")
+                .password("Password123")
+                .confirmPassword("Password123")
+                .postcode("INVALID_POSTCODE")
+                .latitude(51.52)
+                .longitude(-0.07)
+                .photograph(photo)
+                .build();
+
+        when(userRepository.existsByEmail("admin@gracechurch.org")).thenReturn(false);
+        when(organizationRepository.existsByEmail("admin@gracechurch.org")).thenReturn(false);
+        when(postcodeService.validatePostcode("INVALID_POSTCODE")).thenReturn(
+                PostcodeValidationResponse.builder().valid(false).postcode("INVALID_POSTCODE").build()
+        );
+
+        ApiException ex = assertThrows(ApiException.class, () ->
+                organizationService.registerAdminAndOrganization(request, photo));
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatus());
+        assertTrue(ex.getMessage().contains("Invalid UK postcode"));
+    }
+
+    @Test
+    public void registerAdminAndOrganization_DuplicateEmail_ThrowsBadRequest() {
+        MockMultipartFile photo = new MockMultipartFile("photograph", "church.jpg", "image/jpeg", new byte[]{1, 2, 3});
+        AdminRegisterRequest request = AdminRegisterRequest.builder()
+                .organizationName("Grace Church")
+                .organizationType(OrganizationType.CHURCH)
+                .email("admin@gracechurch.org")
+                .phone("+442079460000")
+                .password("Password123")
+                .confirmPassword("Password123")
+                .postcode("E1 6AN")
+                .latitude(51.52)
+                .longitude(-0.07)
+                .photograph(photo)
+                .build();
+
+        when(userRepository.existsByEmail("admin@gracechurch.org")).thenReturn(true);
+
+        ApiException ex = assertThrows(ApiException.class, () ->
+                organizationService.registerAdminAndOrganization(request, photo));
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatus());
+        assertEquals("Email is already registered", ex.getMessage());
+    }
+
 
     @Test
     public void superAdminApprove_GeneratesUniqueOrganizationCode() {

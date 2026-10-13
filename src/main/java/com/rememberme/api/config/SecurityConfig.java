@@ -41,8 +41,10 @@ public class SecurityConfig {
         "/uploads/**",
         "/swagger-ui.html",
         "/swagger-ui/**",
+        "/api-docs",
         "/api-docs/**",
         "/api-docs.yaml",
+        "/v3/api-docs",
         "/v3/api-docs/**",
         "/v3/api-docs.yaml"
     };

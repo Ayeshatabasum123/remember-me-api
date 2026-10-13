@@ -7,3 +7,4 @@ target/
 application-local.yml
 firebase-service-account.json
 *.log
+uploads/

@@ -21,51 +21,54 @@ import org.springframework.web.multipart.MultipartFile;
 public class AdminRegisterRequest {
 
     @NotBlank(message = "Organization name is required")
-    @Schema(example = "St. Paul's Church")
+    @Schema(description = "Organization name", example = "St. Paul's Church", requiredMode = Schema.RequiredMode.REQUIRED)
     private String organizationName;
 
     @NotNull(message = "Organization type is required (CHURCH, MOSQUE, TEMPLE, OTHER)")
-    @Schema(example = "CHURCH")
+    @Schema(description = "Organization type", example = "CHURCH", requiredMode = Schema.RequiredMode.REQUIRED)
     private OrganizationType organizationType;
 
     @NotBlank(message = "Email is required")
     @Email(message = "Email must be valid")
-    @Schema(example = "admin@stpauls.org")
+    @Schema(description = "Admin contact email address", example = "admin@stpauls.org", requiredMode = Schema.RequiredMode.REQUIRED)
     private String email;
 
     @NotBlank(message = "Phone number is required")
-    @Schema(example = "+442079460000")
+    @Schema(description = "Contact phone number", example = "+442079460000", requiredMode = Schema.RequiredMode.REQUIRED)
     private String phone;
 
     @NotBlank(message = "Password is required")
     @Size(min = 8, message = "Password must be at least 8 characters long.")
-    @Schema(example = "AdminPass123!")
+    @Schema(description = "Admin password (minimum 8 characters)", example = "AdminPass123!", requiredMode = Schema.RequiredMode.REQUIRED)
     private String password;
 
     @NotBlank(message = "Confirm password is required")
-    @Schema(example = "AdminPass123!")
+    @Schema(description = "Confirm password (must match password)", example = "AdminPass123!", requiredMode = Schema.RequiredMode.REQUIRED)
     private String confirmPassword;
 
     @NotBlank(message = "Organization postcode is required")
-    @Schema(example = "SW1A 1AA")
+    @Schema(description = "Valid UK postcode", example = "SW1A 1AA", requiredMode = Schema.RequiredMode.REQUIRED)
     private String postcode;
 
     @NotNull(message = "Latitude is required")
     @DecimalMin(value = "-90.0", message = "Latitude must be between -90 and 90")
     @DecimalMax(value = "90.0", message = "Latitude must be between -90 and 90")
-    @Schema(example = "51.5014")
+    @Schema(description = "Organization latitude (-90 to 90)", example = "51.5014", requiredMode = Schema.RequiredMode.REQUIRED)
     private Double latitude;
 
     @NotNull(message = "Longitude is required")
     @DecimalMin(value = "-180.0", message = "Longitude must be between -180 and 180")
     @DecimalMax(value = "180.0", message = "Longitude must be between -180 and 180")
-    @Schema(example = "-0.1419")
+    @Schema(description = "Organization longitude (-180 to 180)", example = "-0.1419", requiredMode = Schema.RequiredMode.REQUIRED)
     private Double longitude;
 
-    // Optional URL if not using multipart upload
-    @Schema(example = "https://example.com/church.jpg")
-    private String photoUrl;
-
-    // Optional direct multipart file mapping for multipart/form-data
+    @NotNull(message = "Organization photograph is required")
+    @Schema(
+            description = "Organization photograph image file (JPG, JPEG, or PNG format, max 5MB)",
+            type = "string",
+            format = "binary",
+            requiredMode = Schema.RequiredMode.REQUIRED
+    )
     private MultipartFile photograph;
 }
+

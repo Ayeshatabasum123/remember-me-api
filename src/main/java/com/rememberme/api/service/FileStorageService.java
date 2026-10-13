@@ -7,6 +7,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -20,12 +22,12 @@ import java.util.UUID;
 @Slf4j
 public class FileStorageService {
 
-    private static final long MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+    public static final long MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
-            "image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"
+            "image/jpeg", "image/jpg", "image/png"
     );
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of(
-            "jpg", "jpeg", "png", "webp", "gif"
+            "jpg", "jpeg", "png"
     );
 
     private final Path uploadLocation = Paths.get("uploads", "organizations");
@@ -44,23 +46,27 @@ public class FileStorageService {
         }
 
         if (file.getSize() > MAX_FILE_SIZE) {
-            throw new ApiException("Photograph file size exceeds maximum allowed limit (10MB)", HttpStatus.BAD_REQUEST);
+            throw new ApiException("Photograph file size exceeds maximum allowed limit (5MB)", HttpStatus.BAD_REQUEST);
         }
 
-        String contentType = file.getContentType();
         String originalFilename = StringUtils.cleanPath(file.getOriginalFilename() != null ? file.getOriginalFilename() : "");
         String extension = getFileExtension(originalFilename);
 
-        boolean validContentType = contentType != null && ALLOWED_CONTENT_TYPES.contains(contentType.toLowerCase());
-        boolean validExtension = extension != null && ALLOWED_EXTENSIONS.contains(extension.toLowerCase());
-
-        if (!validContentType && !validExtension) {
-            throw new ApiException("Invalid file type. Only JPEG, PNG, WEBP, and GIF images are allowed", HttpStatus.BAD_REQUEST);
+        if (extension == null || !ALLOWED_EXTENSIONS.contains(extension.toLowerCase())) {
+            throw new ApiException("Invalid image format. Only JPG, JPEG, and PNG images are allowed", HttpStatus.BAD_REQUEST);
         }
+
+        String contentType = file.getContentType();
+        if (contentType != null && !contentType.isBlank() && !ALLOWED_CONTENT_TYPES.contains(contentType.toLowerCase())) {
+            throw new ApiException("Invalid image format. Only JPG, JPEG, and PNG images are allowed", HttpStatus.BAD_REQUEST);
+        }
+
+        // Validate actual image content, not only file extensions
+        validateImageContent(file);
 
         try {
             Files.createDirectories(uploadLocation);
-            String safeExtension = (extension != null && !extension.isBlank()) ? "." + extension.toLowerCase() : ".jpg";
+            String safeExtension = "." + extension.toLowerCase();
             String savedFilename = UUID.randomUUID().toString() + safeExtension;
             Path destinationFile = uploadLocation.resolve(savedFilename).normalize().toAbsolutePath();
 
@@ -73,6 +79,40 @@ public class FileStorageService {
         } catch (IOException e) {
             log.error("Failed to store organization photo: {}", e.getMessage(), e);
             throw new ApiException("Failed to store uploaded file: " + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    private void validateImageContent(MultipartFile file) {
+        // 1. Verify magic header bytes for JPG or PNG
+        try (InputStream inputStream = file.getInputStream()) {
+            byte[] header = new byte[8];
+            int read = inputStream.read(header);
+            if (read < 3) {
+                throw new ApiException("Invalid image format. Uploaded file does not contain valid image content", HttpStatus.BAD_REQUEST);
+            }
+
+            boolean isJpeg = ((header[0] & 0xFF) == 0xFF && (header[1] & 0xFF) == 0xD8 && (header[2] & 0xFF) == 0xFF);
+            boolean isPng = (read >= 8 &&
+                    (header[0] & 0xFF) == 0x89 && (header[1] & 0xFF) == 0x50 &&
+                    (header[2] & 0xFF) == 0x4E && (header[3] & 0xFF) == 0x47 &&
+                    (header[4] & 0xFF) == 0x0D && (header[5] & 0xFF) == 0x0A &&
+                    (header[6] & 0xFF) == 0x1A && (header[7] & 0xFF) == 0x0A);
+
+            if (!isJpeg && !isPng) {
+                throw new ApiException("Invalid image format. Only JPG, JPEG, and PNG images are allowed", HttpStatus.BAD_REQUEST);
+            }
+        } catch (IOException e) {
+            throw new ApiException("Failed to read photograph content: " + e.getMessage(), HttpStatus.BAD_REQUEST);
+        }
+
+        // 2. Verify image decoding using ImageIO
+        try (InputStream inputStream = file.getInputStream()) {
+            BufferedImage image = ImageIO.read(inputStream);
+            if (image == null) {
+                throw new ApiException("Invalid image format. Uploaded file could not be decoded as an image", HttpStatus.BAD_REQUEST);
+            }
+        } catch (IOException e) {
+            throw new ApiException("Failed to decode photograph content: " + e.getMessage(), HttpStatus.BAD_REQUEST);
         }
     }
 

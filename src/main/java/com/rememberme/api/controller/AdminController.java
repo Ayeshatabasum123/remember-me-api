@@ -44,22 +44,25 @@ public class AdminController {
 
     @PostMapping(value = "/register", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("permitAll()")
-    @Operation(summary = "Register Religious Organization & Admin (Multipart)", description = "Allows an Admin to register a religious organization with photograph upload")
-    public ApiResponse<AdminRegisterResponse> registerAdminMultipart(
-            @ModelAttribute AdminRegisterRequest request,
-            @RequestPart(value = "photograph", required = false) MultipartFile photograph) {
-        MultipartFile file = photograph != null ? photograph : request.getPhotograph();
+    @Operation(
+            summary = "Register Religious Organization & Admin",
+            description = "Allows an Admin to register a religious organization with mandatory photograph upload"
+    )
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            description = "Organization registration details and mandatory photograph file",
+            required = true,
+            content = @Content(
+                    mediaType = MediaType.MULTIPART_FORM_DATA_VALUE,
+                    schema = @Schema(implementation = AdminRegisterRequest.class)
+            )
+    )
+    public ApiResponse<AdminRegisterResponse> registerAdmin(
+            @Valid @ModelAttribute AdminRegisterRequest request) {
+        MultipartFile file = request.getPhotograph();
         AdminRegisterResponse response = organizationService.registerAdminAndOrganization(request, file);
         return ApiResponse.success("Admin and organization registered successfully. Status: PENDING", response);
     }
 
-    @PostMapping(value = "/register", consumes = MediaType.APPLICATION_JSON_VALUE)
-    @PreAuthorize("permitAll()")
-    @Operation(summary = "Register Religious Organization & Admin (JSON)", description = "Allows an Admin to register a religious organization with a photograph URL")
-    public ApiResponse<AdminRegisterResponse> registerAdminJson(@Valid @RequestBody AdminRegisterRequest request) {
-        AdminRegisterResponse response = organizationService.registerAdminAndOrganization(request, null);
-        return ApiResponse.success("Admin and organization registered successfully. Status: PENDING", response);
-    }
 
     private String getAuthenticatedEmail(Principal principal) {
         if (principal != null && org.springframework.util.StringUtils.hasText(principal.getName())) {

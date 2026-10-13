@@ -77,16 +77,12 @@ public class OrganizationService {
         String canonicalPostcode = postcodeResult.getPostcode();
         String normalizedPostcode = postcodeService.normalizePostcode(canonicalPostcode);
 
-        // Photo upload / resolution
-        String photoUrl;
+        // Photo upload / resolution - mandatory file upload
         MultipartFile effectiveFile = photographFile != null ? photographFile : request.getPhotograph();
-        if (effectiveFile != null && !effectiveFile.isEmpty()) {
-            photoUrl = fileStorageService.storeOrganizationPhoto(effectiveFile);
-        } else if (StringUtils.hasText(request.getPhotoUrl())) {
-            photoUrl = request.getPhotoUrl();
-        } else {
+        if (effectiveFile == null || effectiveFile.isEmpty()) {
             throw new ApiException("Organization photograph is required", HttpStatus.BAD_REQUEST);
         }
+        String photoUrl = fileStorageService.storeOrganizationPhoto(effectiveFile);
 
         // 1. Create Admin User
         User adminUser = User.builder()

@@ -38,7 +38,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.rememberme.api.config.StringToMultipartFileConverter;
+import com.rememberme.api.exception.GlobalExceptionHandler;
+import org.springframework.context.annotation.Import;
+
 @WebMvcTest(AdminController.class)
+@Import({GlobalExceptionHandler.class, StringToMultipartFileConverter.class})
 @AutoConfigureMockMvc(addFilters = false)
 public class AdminRegistrationAndEventControllerTest {
 
@@ -73,45 +78,8 @@ public class AdminRegistrationAndEventControllerTest {
     private CustomUserDetailsService userDetailsService;
 
     @Test
-    public void registerAdminJson_Success() throws Exception {
-        AdminRegisterRequest request = AdminRegisterRequest.builder()
-                .organizationName("London Central Mosque")
-                .organizationType(OrganizationType.MOSQUE)
-                .email("admin@lcm.org")
-                .phone("+442079461111")
-                .password("Password123!")
-                .confirmPassword("Password123!")
-                .postcode("NW8 7RG")
-                .latitude(51.53)
-                .longitude(-0.16)
-                .photoUrl("https://example.com/photo.jpg")
-                .build();
-
-        AdminRegisterResponse response = AdminRegisterResponse.builder()
-                .userId(1L)
-                .email("admin@lcm.org")
-                .role("ADMIN")
-                .organization(OrganizationResponseDto.builder()
-                        .name("London Central Mosque")
-                        .approvalStatus(OrganizationApprovalStatus.PENDING)
-                        .build())
-                .build();
-
-        when(organizationService.registerAdminAndOrganization(any(AdminRegisterRequest.class), any()))
-                .thenReturn(response);
-
-        mockMvc.perform(post("/api/admin/register")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.email").value("admin@lcm.org"))
-                .andExpect(jsonPath("$.data.organization.approvalStatus").value("PENDING"));
-    }
-
-    @Test
     public void registerAdminMultipart_Success() throws Exception {
-        MockMultipartFile photo = new MockMultipartFile("photograph", "church.jpg", "image/jpeg", "image_bytes".getBytes());
+        MockMultipartFile photo = new MockMultipartFile("photograph", "church.jpg", "image/jpeg", new byte[]{1, 2, 3});
 
         AdminRegisterResponse response = AdminRegisterResponse.builder()
                 .userId(2L)
@@ -120,6 +88,7 @@ public class AdminRegistrationAndEventControllerTest {
                 .organization(OrganizationResponseDto.builder()
                         .name("St Church")
                         .approvalStatus(OrganizationApprovalStatus.PENDING)
+                        .photoUrl("/uploads/organizations/church.jpg")
                         .build())
                 .build();
 
@@ -139,8 +108,143 @@ public class AdminRegistrationAndEventControllerTest {
                         .param("longitude", "-0.141"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.email").value("admin@church.org"));
+                .andExpect(jsonPath("$.data.email").value("admin@church.org"))
+                .andExpect(jsonPath("$.data.organization.approvalStatus").value("PENDING"));
     }
+
+    @Test
+    public void registerAdmin_MissingPhotograph_ReturnsBadRequest() throws Exception {
+        when(organizationService.registerAdminAndOrganization(any(), any()))
+                .thenThrow(new com.rememberme.api.exception.ApiException("Organization photograph is required", org.springframework.http.HttpStatus.BAD_REQUEST));
+
+        mockMvc.perform(multipart("/api/admin/register")
+                        .param("organizationName", "St Church")
+                        .param("organizationType", "CHURCH")
+                        .param("email", "admin@church.org")
+                        .param("phone", "+442079461111")
+                        .param("password", "Password123!")
+                        .param("confirmPassword", "Password123!")
+                        .param("postcode", "SW1A 1AA")
+                        .param("latitude", "51.501")
+                        .param("longitude", "-0.141"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Organization photograph is required"));
+    }
+
+    @Test
+    public void registerAdmin_EmptyPhotograph_ReturnsBadRequest() throws Exception {
+        MockMultipartFile emptyPhoto = new MockMultipartFile("photograph", "church.jpg", "image/jpeg", new byte[0]);
+
+        when(organizationService.registerAdminAndOrganization(any(), any()))
+                .thenThrow(new com.rememberme.api.exception.ApiException("Organization photograph is required", org.springframework.http.HttpStatus.BAD_REQUEST));
+
+        mockMvc.perform(multipart("/api/admin/register")
+                        .file(emptyPhoto)
+                        .param("organizationName", "St Church")
+                        .param("organizationType", "CHURCH")
+                        .param("email", "admin@church.org")
+                        .param("phone", "+442079461111")
+                        .param("password", "Password123!")
+                        .param("confirmPassword", "Password123!")
+                        .param("postcode", "SW1A 1AA")
+                        .param("latitude", "51.501")
+                        .param("longitude", "-0.141"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Organization photograph is required"));
+    }
+
+    @Test
+    public void registerAdmin_PhotographSentAsString_ReturnsBadRequestWithClearMessage() throws Exception {
+        mockMvc.perform(multipart("/api/admin/register")
+                        .param("photograph", "string")
+                        .param("organizationName", "St Church")
+                        .param("organizationType", "CHURCH")
+                        .param("email", "admin@church.org")
+                        .param("phone", "+442079461111")
+                        .param("password", "Password123!")
+                        .param("confirmPassword", "Password123!")
+                        .param("postcode", "SW1A 1AA")
+                        .param("latitude", "51.501")
+                        .param("longitude", "-0.141"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.photograph").value("Organization photograph must be uploaded as a valid image file (JPG, JPEG, PNG), not sent as a String"));
+    }
+
+    @Test
+    public void registerAdmin_JsonRequest_Rejected() throws Exception {
+        mockMvc.perform(post("/api/admin/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"organizationName\":\"St Church\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    public void registerAdmin_PasswordMismatch_ReturnsBadRequest() throws Exception {
+        MockMultipartFile photo = new MockMultipartFile("photograph", "church.jpg", "image/jpeg", new byte[]{1, 2, 3});
+
+        when(organizationService.registerAdminAndOrganization(any(), any()))
+                .thenThrow(new com.rememberme.api.exception.ApiException("Password and confirm password must match", org.springframework.http.HttpStatus.BAD_REQUEST));
+
+        mockMvc.perform(multipart("/api/admin/register")
+                        .file(photo)
+                        .param("organizationName", "St Church")
+                        .param("organizationType", "CHURCH")
+                        .param("email", "admin@church.org")
+                        .param("phone", "+442079461111")
+                        .param("password", "Password123!")
+                        .param("confirmPassword", "MismatchPassword456!")
+                        .param("postcode", "SW1A 1AA")
+                        .param("latitude", "51.501")
+                        .param("longitude", "-0.141"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Password and confirm password must match"));
+    }
+
+    @Test
+    public void registerAdmin_InvalidPostcode_ReturnsBadRequest() throws Exception {
+        MockMultipartFile photo = new MockMultipartFile("photograph", "church.jpg", "image/jpeg", new byte[]{1, 2, 3});
+
+        when(organizationService.registerAdminAndOrganization(any(), any()))
+                .thenThrow(new com.rememberme.api.exception.ApiException("Invalid UK postcode: INVALID", org.springframework.http.HttpStatus.BAD_REQUEST));
+
+        mockMvc.perform(multipart("/api/admin/register")
+                        .file(photo)
+                        .param("organizationName", "St Church")
+                        .param("organizationType", "CHURCH")
+                        .param("email", "admin@church.org")
+                        .param("phone", "+442079461111")
+                        .param("password", "Password123!")
+                        .param("confirmPassword", "Password123!")
+                        .param("postcode", "INVALID")
+                        .param("latitude", "51.501")
+                        .param("longitude", "-0.141"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Invalid UK postcode: INVALID"));
+    }
+
+    @Test
+    public void registerAdmin_DuplicateEmail_ReturnsBadRequest() throws Exception {
+        MockMultipartFile photo = new MockMultipartFile("photograph", "church.jpg", "image/jpeg", new byte[]{1, 2, 3});
+
+        when(organizationService.registerAdminAndOrganization(any(), any()))
+                .thenThrow(new com.rememberme.api.exception.ApiException("Email is already registered", org.springframework.http.HttpStatus.BAD_REQUEST));
+
+        mockMvc.perform(multipart("/api/admin/register")
+                        .file(photo)
+                        .param("organizationName", "St Church")
+                        .param("organizationType", "CHURCH")
+                        .param("email", "existing@church.org")
+                        .param("phone", "+442079461111")
+                        .param("password", "Password123!")
+                        .param("confirmPassword", "Password123!")
+                        .param("postcode", "SW1A 1AA")
+                        .param("latitude", "51.501")
+                        .param("longitude", "-0.141"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Email is already registered"));
+    }
+
+
 
     @Test
     @WithMockUser(username = "admin@lcm.org", roles = {"ADMIN"})
