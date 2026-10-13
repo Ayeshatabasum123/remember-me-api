@@ -40,6 +40,7 @@ public class User {
     private String country;
 
     @Column(name = "fcm_token")
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String fcmToken;
 
     @Enumerated(EnumType.STRING)

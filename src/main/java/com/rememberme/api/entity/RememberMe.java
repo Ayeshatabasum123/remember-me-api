@@ -1,5 +1,6 @@
 package com.rememberme.api.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
@@ -49,6 +50,7 @@ public class RememberMe {
 
     @ManyToOne
     @JoinColumn(name = "managed_by_user_id")
+    @JsonIgnore
     private User managedBy;
 
     @Enumerated(EnumType.STRING)

@@ -34,6 +34,8 @@ public class SecurityConfig {
     private final JwtAuthFilter jwtAuthFilter;
 
     private static final String[] PUBLIC_ENDPOINTS = {
+        "/",
+        "/api",
         "/api/auth/**",
         "/api/postcodes/**",
         "/api/graveyards/search/**",
@@ -68,7 +70,10 @@ public class SecurityConfig {
                 )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/", "/api").permitAll()
                         .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/deceased", "/api/deceased/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/memorials/recent", "/api/v1/memorials/recent/**", "/api/memorials/recent", "/api/memorials/recent/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/admin/register").permitAll()
                         .requestMatchers("/api/super-admin/**").hasRole("SUPER_ADMIN")
                         .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
