@@ -107,20 +107,25 @@ public class FirebaseConfig {
         }
 
         if (app == null) {
-            try {
-                log.info("Attempting FirebaseApp initialization with default Google Application Credentials");
-                FirebaseOptions.Builder optionsBuilder = FirebaseOptions.builder()
-                        .setCredentials(GoogleCredentials.getApplicationDefault());
-                if (StringUtils.hasText(projectId)) {
-                    optionsBuilder.setProjectId(projectId.trim());
+            String gcpCredsEnv = System.getenv("GOOGLE_APPLICATION_CREDENTIALS");
+            if (StringUtils.hasText(gcpCredsEnv)) {
+                try {
+                    log.info("Attempting FirebaseApp initialization with default Google Application Credentials from GOOGLE_APPLICATION_CREDENTIALS: {}", gcpCredsEnv);
+                    FirebaseOptions.Builder optionsBuilder = FirebaseOptions.builder()
+                            .setCredentials(GoogleCredentials.getApplicationDefault());
+                    if (StringUtils.hasText(projectId)) {
+                        optionsBuilder.setProjectId(projectId.trim());
+                    }
+                    app = FirebaseApp.initializeApp(optionsBuilder.build());
+                    log.info("Successfully initialized FirebaseApp with Application Default Credentials. Resolved Project ID: {}", app.getOptions().getProjectId());
+                    mockMode = false;
+                    unconfigured = false;
+                    unconfiguredReason = null;
+                } catch (Exception e) {
+                    log.warn("Firebase default application credentials not available: {}", e.getMessage());
                 }
-                app = FirebaseApp.initializeApp(optionsBuilder.build());
-                log.info("Successfully initialized FirebaseApp with Application Default Credentials. Resolved Project ID: {}", app.getOptions().getProjectId());
-                mockMode = false;
-                unconfigured = false;
-                unconfiguredReason = null;
-            } catch (Exception e) {
-                log.warn("Firebase default application credentials not available: {}", e.getMessage());
+            } else {
+                log.info("No GOOGLE_APPLICATION_CREDENTIALS environment variable found; skipping Google Application Default Credentials check to prevent network timeout.");
             }
         }
 

@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.security.Principal;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/admin")
@@ -111,6 +112,33 @@ public class AdminController {
     }
 
     // --- EVENT MANAGEMENT ---
+
+    @GetMapping("/events")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(
+            summary = "Get Organization Events",
+            description = "Retrieves all events (draft and published) belonging to the authenticated Admin's organization",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200",
+                    description = "Organization events retrieved successfully"
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401",
+                    description = "Unauthorized - invalid or missing JWT token"
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "403",
+                    description = "Forbidden - requires ADMIN role"
+            )
+    })
+    public ApiResponse<List<EventResponseDto>> getAdminEvents(Principal principal) {
+        String adminEmail = getAuthenticatedEmail(principal);
+        List<EventResponseDto> events = eventService.getAdminEvents(adminEmail);
+        return ApiResponse.success("Organization events retrieved successfully", events);
+    }
 
     @PostMapping("/events")
     @PreAuthorize("hasRole('ADMIN')")

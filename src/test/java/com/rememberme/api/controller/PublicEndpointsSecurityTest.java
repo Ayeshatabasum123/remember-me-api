@@ -100,6 +100,22 @@ public class PublicEndpointsSecurityTest {
     }
 
     @Test
+    public void health_WithoutJwt_Returns200() throws Exception {
+        mockMvc.perform(get("/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.status").value("UP"));
+    }
+
+    @Test
+    public void apiHealth_WithoutJwt_Returns200() throws Exception {
+        mockMvc.perform(get("/api/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.status").value("UP"));
+    }
+
+    @Test
     public void getDeceased_WithoutJwt_Returns200() throws Exception {
         when(deceasedPersonRepository.findAll()).thenReturn(Collections.emptyList());
 

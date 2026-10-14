@@ -461,4 +461,62 @@ public class OrganizationAndEventManagementTest {
         assertEquals(HttpStatus.NOT_FOUND, ex.getStatus());
         assertEquals("Organization not found for authenticated admin", ex.getMessage());
     }
+
+    @Test
+    public void getAdminEvents_ReturnsAllOrganizationEvents() {
+        User admin = User.builder().id(1L).email("admin@gracechurch.org").build();
+        Organization org = Organization.builder()
+                .id(100L)
+                .name("Grace Church")
+                .postcode("E1 6AN")
+                .approvalStatus(OrganizationApprovalStatus.APPROVED)
+                .build();
+        OrganizationAdmin orgAdmin = OrganizationAdmin.builder().user(admin).organization(org).build();
+
+        Event draftEvent = Event.builder()
+                .id(1L)
+                .organization(org)
+                .title("Memorial Service")
+                .description("In memory of parishioners")
+                .eventType(EventType.RELIGIOUS_FUNCTION)
+                .eventDateTime(OffsetDateTime.parse("2026-10-20T10:00:00+01:00"))
+                .status(EventStatus.DRAFT)
+                .build();
+
+        Event publishedEvent = Event.builder()
+                .id(2L)
+                .organization(org)
+                .title("Funeral Announcement")
+                .description("Funeral service")
+                .eventType(EventType.FUNERAL)
+                .eventDateTime(OffsetDateTime.parse("2026-10-25T14:30:00+01:00"))
+                .status(EventStatus.PUBLISHED)
+                .build();
+
+        when(userRepository.findByEmail("admin@gracechurch.org")).thenReturn(Optional.of(admin));
+        when(organizationAdminRepository.findByUserId(1L)).thenReturn(Optional.of(orgAdmin));
+        when(eventRepository.findByOrganizationIdOrderByEventDateTimeDesc(100L))
+                .thenReturn(List.of(publishedEvent, draftEvent));
+
+        List<EventResponseDto> results = eventService.getAdminEvents("admin@gracechurch.org");
+
+        assertNotNull(results);
+        assertEquals(2, results.size());
+
+        EventResponseDto first = results.get(0);
+        assertEquals(2L, first.getId());
+        assertEquals("Funeral Announcement", first.getTitle());
+        assertEquals(EventStatus.PUBLISHED, first.getStatus());
+        assertEquals("E1 6AN", first.getLocation());
+        assertEquals("2026-10-25", first.getDate());
+        assertEquals("14:30:00", first.getTime());
+
+        EventResponseDto second = results.get(1);
+        assertEquals(1L, second.getId());
+        assertEquals("Memorial Service", second.getTitle());
+        assertEquals(EventStatus.DRAFT, second.getStatus());
+        assertEquals("E1 6AN", second.getLocation());
+        assertEquals("2026-10-20", second.getDate());
+        assertEquals("10:00:00", second.getTime());
+    }
 }

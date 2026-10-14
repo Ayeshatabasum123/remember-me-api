@@ -367,4 +367,58 @@ public class AdminRegistrationAndEventControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").value("Organization not found for authenticated admin"));
     }
+
+    @Test
+    @WithMockUser(username = "admin@westminster.org", roles = {"ADMIN"})
+    public void getAdminEvents_Success() throws Exception {
+        EventResponseDto draftEvent = EventResponseDto.builder()
+                .id(1L)
+                .organizationId(2L)
+                .organizationName("Westminster Community Church")
+                .organizationPostcode("SW1A 1AA")
+                .location("SW1A 1AA")
+                .title("Memorial Service")
+                .description("Memorial prayer meeting")
+                .eventType(EventType.RELIGIOUS_FUNCTION)
+                .eventDateTime(OffsetDateTime.parse("2026-10-20T10:00:00+01:00"))
+                .date("2026-10-20")
+                .time("10:00:00")
+                .status(EventStatus.DRAFT)
+                .build();
+
+        EventResponseDto publishedEvent = EventResponseDto.builder()
+                .id(2L)
+                .organizationId(2L)
+                .organizationName("Westminster Community Church")
+                .organizationPostcode("SW1A 1AA")
+                .location("SW1A 1AA")
+                .title("Funeral Announcement")
+                .description("Funeral service at Westminster")
+                .eventType(EventType.FUNERAL)
+                .eventDateTime(OffsetDateTime.parse("2026-10-25T14:30:00+01:00"))
+                .date("2026-10-25")
+                .time("14:30:00")
+                .status(EventStatus.PUBLISHED)
+                .build();
+
+        when(eventService.getAdminEvents("admin@westminster.org"))
+                .thenReturn(java.util.List.of(publishedEvent, draftEvent));
+
+        mockMvc.perform(get("/api/admin/events")
+                        .principal(() -> "admin@westminster.org"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Organization events retrieved successfully"))
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].id").value(2))
+                .andExpect(jsonPath("$.data[0].title").value("Funeral Announcement"))
+                .andExpect(jsonPath("$.data[0].description").value("Funeral service at Westminster"))
+                .andExpect(jsonPath("$.data[0].date").value("2026-10-25"))
+                .andExpect(jsonPath("$.data[0].time").value("14:30:00"))
+                .andExpect(jsonPath("$.data[0].location").value("SW1A 1AA"))
+                .andExpect(jsonPath("$.data[0].status").value("PUBLISHED"))
+                .andExpect(jsonPath("$.data[1].id").value(1))
+                .andExpect(jsonPath("$.data[1].title").value("Memorial Service"))
+                .andExpect(jsonPath("$.data[1].status").value("DRAFT"));
+    }
 }

@@ -10,8 +10,8 @@ FROM eclipse-temurin:17-jre
 WORKDIR /app
 COPY --from=build /app/target/remember-me-api-1.0.0.jar app.jar
 
-# Render provides the PORT env var at runtime; Spring Boot reads server.port
+# Render provides the PORT environment variable dynamically at runtime
 ENV PORT=8080
-EXPOSE 8080
+EXPOSE ${PORT}
 
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["sh", "-c", "java -Dserver.port=${PORT:-8080} -Dserver.address=0.0.0.0 -jar app.jar"]

@@ -14,8 +14,8 @@ import java.util.Map;
 @Tag(name = "Root", description = "Root API status and health check")
 public class RootController {
 
-    @GetMapping({"/", "/api"})
-    @Operation(summary = "Root API status", description = "Returns a message indicating that Remember Me API is running")
+    @GetMapping({"/", "/api", "/health", "/api/health"})
+    @Operation(summary = "Root API status and health check", description = "Returns UP status indicating Remember Me API is running and healthy")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getRootStatus() {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("status", "UP");

@@ -72,9 +72,10 @@ public class DatabaseConfig {
         config.setPassword(password);
         config.setDriverClassName(driverClassName);
         config.setMaximumPoolSize(10);
-        config.setMinimumIdle(2);
+        config.setMinimumIdle(1);
         config.setIdleTimeout(300000);
-        config.setConnectionTimeout(20000);
+        config.setConnectionTimeout(30000);
+        config.setValidationTimeout(5000);
 
         return new HikariDataSource(config);
     }
