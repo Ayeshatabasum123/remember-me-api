@@ -63,6 +63,8 @@ springdoc:
     path: /swagger-ui.html
 
 app:
+  upload:
+    dir: ${APP_UPLOAD_DIR:uploads}
   admin:
     create-test-admin: ${CREATE_TEST_ADMIN:true}
     email: ${ADMIN_EMAIL:admin-test@example.com}

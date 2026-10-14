@@ -2,6 +2,7 @@ package com.rememberme.api.service;
 
 import com.rememberme.api.exception.ApiException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -30,14 +31,26 @@ public class FileStorageService {
             "jpg", "jpeg", "png"
     );
 
-    private final Path uploadLocation = Paths.get("uploads", "organizations");
+    private final Path uploadLocation;
 
     public FileStorageService() {
+        this("uploads");
+    }
+
+    public FileStorageService(@Value("${app.upload.dir:uploads}") String uploadDirProperty) {
+        Path baseUploadDir = Paths.get(uploadDirProperty != null && !uploadDirProperty.isBlank() ? uploadDirProperty : "uploads")
+                .toAbsolutePath().normalize();
+        this.uploadLocation = baseUploadDir.resolve("organizations");
         try {
-            Files.createDirectories(uploadLocation);
+            Files.createDirectories(this.uploadLocation);
+            log.info("Initialized organization photo upload directory: {}", this.uploadLocation);
         } catch (IOException e) {
-            log.warn("Could not pre-create directory: {}", uploadLocation.toAbsolutePath());
+            log.warn("Could not pre-create directory: {}", this.uploadLocation);
         }
+    }
+
+    public Path getUploadLocation() {
+        return this.uploadLocation;
     }
 
     public String storeOrganizationPhoto(MultipartFile file) {
