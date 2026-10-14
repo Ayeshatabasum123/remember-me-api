@@ -62,7 +62,8 @@ public class PostcodeNotificationMatchingTest {
                 notificationRepository,
                 userRepository,
                 postcodeService,
-                firebaseNotificationService
+                firebaseNotificationService,
+                eventRepository
         );
 
         eventService = new EventService(
@@ -217,5 +218,168 @@ public class PostcodeNotificationMatchingTest {
         assertEquals(1L, dto.getEventId());
         assertEquals("Test Org", dto.getOrganizationName());
         assertEquals("Test Title", dto.getEventTitle());
+    }
+
+    @Test
+    public void postcodeMatching_WestminsterAbbey_EventId2_CreatesNotificationForResidentWithMatchingPostcode() {
+        Organization westminsterAbbey = Organization.builder()
+                .id(2L)
+                .name("Westminster Abbey")
+                .postcode("SW1P 3PA")
+                .postcodeNormalized("SW1P3PA")
+                .approvalStatus(OrganizationApprovalStatus.APPROVED)
+                .build();
+
+        Event event2 = Event.builder()
+                .id(2L)
+                .organization(westminsterAbbey)
+                .title("Special Service at Westminster Abbey")
+                .description("Memorial ceremony at the Abbey")
+                .eventType(EventType.RELIGIOUS_FUNCTION)
+                .status(EventStatus.PUBLISHED)
+                .build();
+
+        User resident = User.builder()
+                .id(501L)
+                .fullName("Westminster Resident")
+                .email("resident@westminster.gov.uk")
+                .postcode("sw1p 3pa") // lowercase with space
+                .postcodeNormalized("SW1P3PA")
+                .build();
+
+        when(postcodeService.normalizePostcode("SW1P 3PA")).thenReturn("SW1P3PA");
+        when(userRepository.findMatchingResidentsByPostcode("SW1P3PA")).thenReturn(List.of(resident));
+        when(notificationRepository.existsByEventIdAndUserId(2L, 501L)).thenReturn(false);
+
+        int count = notificationManagementService.processEventNotifications(event2);
+
+        assertEquals(1, count);
+        ArgumentCaptor<Notification> notifCaptor = ArgumentCaptor.forClass(Notification.class);
+        verify(notificationRepository).save(notifCaptor.capture());
+
+        Notification savedNotif = notifCaptor.getValue();
+        assertEquals(2L, savedNotif.getEvent().getId());
+        assertEquals(501L, savedNotif.getUser().getId());
+        assertEquals("Special Service at Westminster Abbey", savedNotif.getTitle());
+        assertEquals("Memorial ceremony at the Abbey", savedNotif.getMessage());
+        assertFalse(savedNotif.isRead());
+    }
+
+    @Test
+    public void syncMissingNotifications_ResidentRegisteredAfterPublication_ReceivesExistingPublishedEvent() {
+        Organization westminsterAbbey = Organization.builder()
+                .id(2L)
+                .name("Westminster Abbey")
+                .postcode("SW1P 3PA")
+                .postcodeNormalized("SW1P3PA")
+                .build();
+
+        Event publishedEvent2 = Event.builder()
+                .id(2L)
+                .organization(westminsterAbbey)
+                .title("Westminster Memorial Event")
+                .description("Annual remembrance")
+                .eventType(EventType.FUNERAL)
+                .status(EventStatus.PUBLISHED)
+                .build();
+
+        User newResident = User.builder()
+                .id(777L)
+                .fullName("New Resident")
+                .email("newresident@london.co.uk")
+                .postcode("SW1P 3PA")
+                .build();
+
+        when(postcodeService.normalizePostcode("SW1P 3PA")).thenReturn("SW1P3PA");
+        when(eventRepository.findPublishedEventsByOrganizationPostcode("SW1P3PA"))
+                .thenReturn(List.of(publishedEvent2));
+        when(notificationRepository.existsByEventIdAndUserId(2L, 777L)).thenReturn(false);
+
+        // When the resident retrieves their notifications, sync runs automatically
+        Notification createdNotification = Notification.builder()
+                .id(901L)
+                .event(publishedEvent2)
+                .user(newResident)
+                .title("Westminster Memorial Event")
+                .message("Annual remembrance")
+                .build();
+
+        when(notificationRepository.findByUserIdOrderByCreatedAtDesc(eq(777L), any()))
+                .thenReturn(new PageImpl<>(List.of(createdNotification)));
+
+        Page<NotificationResponseDto> result = notificationManagementService.getUserNotifications(
+                newResident, PageRequest.of(0, 10));
+
+        assertNotNull(result);
+        assertEquals(1, result.getTotalElements());
+        assertEquals(2L, result.getContent().get(0).getEventId());
+        assertEquals("Westminster Abbey", result.getContent().get(0).getOrganizationName());
+        assertEquals("Westminster Memorial Event", result.getContent().get(0).getEventTitle());
+
+        // Verify the notification record was persisted for the resident
+        verify(notificationRepository).save(any(Notification.class));
+    }
+
+    @Test
+    public void postcodeMatching_DifferentPostcode_DoesNotReceiveNotification() {
+        Organization westminsterAbbey = Organization.builder()
+                .id(2L)
+                .name("Westminster Abbey")
+                .postcode("SW1P 3PA")
+                .build();
+
+        Event event2 = Event.builder()
+                .id(2L)
+                .organization(westminsterAbbey)
+                .title("Westminster Service")
+                .status(EventStatus.PUBLISHED)
+                .build();
+
+        User differentResident = User.builder()
+                .id(888L)
+                .email("camden@test.com")
+                .postcode("NW1 4NP") // Different postcode
+                .postcodeNormalized("NW14NP")
+                .build();
+
+        when(postcodeService.normalizePostcode("SW1P 3PA")).thenReturn("SW1P3PA");
+        when(userRepository.findMatchingResidentsByPostcode("SW1P3PA")).thenReturn(List.of());
+
+        int count = notificationManagementService.processEventNotifications(event2);
+
+        assertEquals(0, count);
+        verify(notificationRepository, never()).save(any());
+    }
+
+    @Test
+    public void syncMissingNotifications_Deduplication_NeverCreatesDuplicates() {
+        Organization westminsterAbbey = Organization.builder()
+                .id(2L)
+                .name("Westminster Abbey")
+                .postcode("SW1P 3PA")
+                .build();
+
+        Event publishedEvent2 = Event.builder()
+                .id(2L)
+                .organization(westminsterAbbey)
+                .status(EventStatus.PUBLISHED)
+                .build();
+
+        User resident = User.builder()
+                .id(501L)
+                .postcode("SW1P 3PA")
+                .postcodeNormalized("SW1P3PA")
+                .build();
+
+        when(postcodeService.normalizePostcode("SW1P 3PA")).thenReturn("SW1P3PA");
+        when(eventRepository.findPublishedEventsByOrganizationPostcode("SW1P3PA"))
+                .thenReturn(List.of(publishedEvent2));
+        // Notification already exists in repository
+        when(notificationRepository.existsByEventIdAndUserId(2L, 501L)).thenReturn(true);
+
+        int synced = notificationManagementService.syncMissingNotificationsForUser(resident);
+
+        assertEquals(0, synced);
+        verify(notificationRepository, never()).save(any());
     }
 }

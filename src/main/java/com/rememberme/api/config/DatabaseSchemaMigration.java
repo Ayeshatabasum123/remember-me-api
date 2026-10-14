@@ -37,7 +37,9 @@ public class DatabaseSchemaMigration implements CommandLineRunner {
             "ALTER TABLE graveyards ALTER COLUMN city TYPE VARCHAR(100)",
             "ALTER TABLE graveyards ALTER COLUMN country TYPE VARCHAR(100)",
             "ALTER TABLE graveyards ALTER COLUMN city SET NOT NULL",
-            "ALTER TABLE graveyards ALTER COLUMN country SET NOT NULL"
+            "ALTER TABLE graveyards ALTER COLUMN country SET NOT NULL",
+            "UPDATE users SET postcode_normalized = UPPER(REPLACE(postcode, ' ', '')) WHERE postcode IS NOT NULL AND (postcode_normalized IS NULL OR postcode_normalized = '')",
+            "UPDATE organizations SET postcode_normalized = UPPER(REPLACE(postcode, ' ', '')) WHERE postcode IS NOT NULL AND (postcode_normalized IS NULL OR postcode_normalized = '')"
         };
 
         for (String sql : migrations) {

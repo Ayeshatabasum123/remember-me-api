@@ -69,6 +69,9 @@ public class UserController {
         currentUser.setUpdatedAt(LocalDateTime.now());
         User saved = userRepository.save(currentUser);
 
+        // Immediately sync notifications for existing published events in this postcode
+        notificationManagementService.syncMissingNotificationsForUser(saved);
+
         return ApiResponse.success("Postcode updated successfully", saved);
     }
 
