@@ -1,6 +1,9 @@
 package com.rememberme.api.controller;
 
 import com.rememberme.api.config.SecurityConfig;
+import com.rememberme.api.dto.response.AdminOrganizationDetailsResponse;
+import com.rememberme.api.entity.OrganizationApprovalStatus;
+import com.rememberme.api.entity.OrganizationType;
 import com.rememberme.api.entity.RememberMe;
 import com.rememberme.api.entity.Report;
 import com.rememberme.api.entity.User;
@@ -192,6 +195,48 @@ public class AdminSecurityControllerTest {
                 .andExpect(jsonPath("$.data.totalRecords").value(1))
                 .andExpect(jsonPath("$.data.successfulRecords").value(1))
                 .andExpect(jsonPath("$.data.failedRecords").value(0));
+    }
+
+    // --- GET /api/admin/organization/me SECURITY TESTS ---
+
+    @Test
+    public void getMyOrganization_UnauthorizedWithoutToken() throws Exception {
+        mockMvc.perform(get("/api/admin/organization/me"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @WithMockUser(username = "user@example.com", roles = {"USER"})
+    public void getMyOrganization_ForbiddenForUser() throws Exception {
+        mockMvc.perform(get("/api/admin/organization/me"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "admin@westminster.org", roles = {"ADMIN"})
+    public void getMyOrganization_SuccessForAdmin() throws Exception {
+        AdminOrganizationDetailsResponse response = AdminOrganizationDetailsResponse.builder()
+                .organizationId(2L)
+                .organizationName("Westminster Community Church")
+                .organizationCode("ORG-000002")
+                .organizationType(OrganizationType.CHURCH)
+                .postcode("SW1A 1AA")
+                .approvalStatus(OrganizationApprovalStatus.APPROVED)
+                .build();
+
+        when(organizationService.getAdminOrganizationDetails("admin@westminster.org"))
+                .thenReturn(response);
+
+        mockMvc.perform(get("/api/admin/organization/me"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Organization details retrieved successfully"))
+                .andExpect(jsonPath("$.data.organizationId").value(2))
+                .andExpect(jsonPath("$.data.organizationName").value("Westminster Community Church"))
+                .andExpect(jsonPath("$.data.organizationCode").value("ORG-000002"))
+                .andExpect(jsonPath("$.data.organizationType").value("CHURCH"))
+                .andExpect(jsonPath("$.data.postcode").value("SW1A 1AA"))
+                .andExpect(jsonPath("$.data.approvalStatus").value("APPROVED"));
     }
 }
 

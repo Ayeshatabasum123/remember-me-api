@@ -3,8 +3,12 @@ package com.rememberme.api.service;
 import com.rememberme.api.dto.request.LoginRequest;
 import com.rememberme.api.dto.request.RegisterRequest;
 import com.rememberme.api.dto.response.AuthResponse;
+import com.rememberme.api.entity.Organization;
+import com.rememberme.api.entity.OrganizationAdmin;
+import com.rememberme.api.entity.OrganizationApprovalStatus;
 import com.rememberme.api.entity.User;
 import com.rememberme.api.exception.ApiException;
+import com.rememberme.api.repository.OrganizationAdminRepository;
 import com.rememberme.api.repository.UserRepository;
 import com.rememberme.api.security.JwtUtil;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,6 +37,9 @@ public class AuthServiceTest {
 
     @Mock
     private JwtUtil jwtUtil;
+
+    @Mock
+    private OrganizationAdminRepository organizationAdminRepository;
 
     @InjectMocks
     private AuthService authService;
@@ -144,6 +151,90 @@ public class AuthServiceTest {
         assertEquals("Regular User", response.getUser().getFullName());
         assertEquals("user@example.com", response.getUser().getEmail());
         assertEquals("USER", response.getUser().getRole());
+        assertNull(response.getOrganizationName());
+        assertNull(response.getOrganizationCode());
+        assertNull(response.getPostcode());
+        assertNull(response.getApprovalStatus());
+    }
+
+    @Test
+    public void login_AdminWithOrganization_ReturnsOrganizationDetails() {
+        User adminUser = User.builder()
+                .id(10L)
+                .fullName("Westminster Admin")
+                .email("admin@westminster.org")
+                .password("encodedAdminPass")
+                .role(User.Role.ADMIN)
+                .postcode("SW1A 1AA")
+                .build();
+
+        Organization organization = Organization.builder()
+                .id(2L)
+                .name("Westminster Community Church")
+                .organizationCode("ORG-000002")
+                .postcode("SW1A 1AA")
+                .approvalStatus(OrganizationApprovalStatus.APPROVED)
+                .build();
+
+        OrganizationAdmin orgAdmin = OrganizationAdmin.builder()
+                .id(1L)
+                .user(adminUser)
+                .organization(organization)
+                .build();
+
+        LoginRequest adminLogin = new LoginRequest();
+        adminLogin.setEmail("admin@westminster.org");
+        adminLogin.setPassword("Password123!");
+
+        when(userRepository.findByEmail("admin@westminster.org")).thenReturn(Optional.of(adminUser));
+        when(passwordEncoder.matches("Password123!", "encodedAdminPass")).thenReturn(true);
+        when(jwtUtil.generateToken("admin@westminster.org")).thenReturn("adminOrgJwtToken");
+        when(organizationAdminRepository.findByUserId(10L)).thenReturn(Optional.of(orgAdmin));
+
+        AuthResponse response = authService.login(adminLogin);
+
+        assertNotNull(response);
+        assertEquals("admin@westminster.org", response.getEmail());
+        assertEquals("ADMIN", response.getRole());
+        assertEquals("adminOrgJwtToken", response.getToken());
+        assertEquals("Westminster Community Church", response.getOrganizationName());
+        assertEquals("ORG-000002", response.getOrganizationCode());
+        assertEquals("SW1A 1AA", response.getPostcode());
+        assertEquals("APPROVED", response.getApprovalStatus());
+        assertNotNull(response.getUser());
+        assertEquals(10L, response.getUser().getId());
+        assertEquals("Westminster Admin", response.getUser().getFullName());
+    }
+
+    @Test
+    public void login_SuperAdmin_DoesNotIncludeOrganizationDetails() {
+        User superAdmin = User.builder()
+                .id(99L)
+                .fullName("Super Admin")
+                .email("superadmin@rememberme.com")
+                .password("encodedSuperPass")
+                .role(User.Role.SUPER_ADMIN)
+                .build();
+
+        LoginRequest superAdminLogin = new LoginRequest();
+        superAdminLogin.setEmail("superadmin@rememberme.com");
+        superAdminLogin.setPassword("SuperAdmin@123");
+
+        when(userRepository.findByEmail("superadmin@rememberme.com")).thenReturn(Optional.of(superAdmin));
+        when(passwordEncoder.matches("SuperAdmin@123", "encodedSuperPass")).thenReturn(true);
+        when(jwtUtil.generateToken("superadmin@rememberme.com")).thenReturn("superAdminJwtToken");
+
+        AuthResponse response = authService.login(superAdminLogin);
+
+        assertNotNull(response);
+        assertEquals("superadmin@rememberme.com", response.getEmail());
+        assertEquals("SUPER_ADMIN", response.getRole());
+        assertEquals("superAdminJwtToken", response.getToken());
+        assertNull(response.getOrganizationName());
+        assertNull(response.getOrganizationCode());
+        assertNull(response.getPostcode());
+        assertNull(response.getApprovalStatus());
+        verifyNoInteractions(organizationAdminRepository);
     }
 
     @Test

@@ -3,6 +3,7 @@ package com.rememberme.api.service;
 import com.rememberme.api.dto.request.AdminRegisterRequest;
 import com.rememberme.api.dto.request.CreateEventRequest;
 import com.rememberme.api.dto.request.UpdateEventRequest;
+import com.rememberme.api.dto.response.AdminOrganizationDetailsResponse;
 import com.rememberme.api.dto.response.AdminRegisterResponse;
 import com.rememberme.api.dto.response.EventResponseDto;
 import com.rememberme.api.dto.response.OrganizationResponseDto;
@@ -379,5 +380,85 @@ public class OrganizationAndEventManagementTest {
         ApiException ex = assertThrows(ApiException.class, () -> eventService.updateEvent("admin@gracechurch.org", 55L, request));
         assertEquals(HttpStatus.FORBIDDEN, ex.getStatus());
         assertTrue(ex.getMessage().contains("You cannot modify an event belonging to another organization"));
+    }
+
+    @Test
+    public void getAdminOrganizationDetails_Success() {
+        User admin = User.builder()
+                .id(1L)
+                .email("admin@westminster.org")
+                .role(User.Role.ADMIN)
+                .build();
+
+        Organization org = Organization.builder()
+                .id(2L)
+                .name("Westminster Community Church")
+                .organizationCode("ORG-000002")
+                .organizationType(OrganizationType.CHURCH)
+                .postcode("SW1A 1AA")
+                .approvalStatus(OrganizationApprovalStatus.APPROVED)
+                .build();
+
+        OrganizationAdmin orgAdmin = OrganizationAdmin.builder()
+                .id(10L)
+                .user(admin)
+                .organization(org)
+                .build();
+
+        when(userRepository.findByEmail("admin@westminster.org")).thenReturn(Optional.of(admin));
+        when(organizationAdminRepository.findByUserId(1L)).thenReturn(Optional.of(orgAdmin));
+
+        AdminOrganizationDetailsResponse response = organizationService.getAdminOrganizationDetails("admin@westminster.org");
+
+        assertNotNull(response);
+        assertEquals(2L, response.getOrganizationId());
+        assertEquals("Westminster Community Church", response.getOrganizationName());
+        assertEquals("ORG-000002", response.getOrganizationCode());
+        assertEquals(OrganizationType.CHURCH, response.getOrganizationType());
+        assertEquals("SW1A 1AA", response.getPostcode());
+        assertEquals(OrganizationApprovalStatus.APPROVED, response.getApprovalStatus());
+    }
+
+    @Test
+    public void getAdminOrganizationDetails_UserNotFound_ThrowsNotFound() {
+        when(userRepository.findByEmail("missing@westminster.org")).thenReturn(Optional.empty());
+
+        ApiException ex = assertThrows(ApiException.class,
+                () -> organizationService.getAdminOrganizationDetails("missing@westminster.org"));
+        assertEquals(HttpStatus.NOT_FOUND, ex.getStatus());
+        assertEquals("Admin user not found", ex.getMessage());
+    }
+
+    @Test
+    public void getAdminOrganizationDetails_NonAdmin_ThrowsForbidden() {
+        User normalUser = User.builder()
+                .id(5L)
+                .email("user@example.com")
+                .role(User.Role.USER)
+                .build();
+
+        when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(normalUser));
+
+        ApiException ex = assertThrows(ApiException.class,
+                () -> organizationService.getAdminOrganizationDetails("user@example.com"));
+        assertEquals(HttpStatus.FORBIDDEN, ex.getStatus());
+        assertTrue(ex.getMessage().contains("Only organization administrators can access organization details"));
+    }
+
+    @Test
+    public void getAdminOrganizationDetails_NoOrgLinked_ThrowsNotFound() {
+        User admin = User.builder()
+                .id(1L)
+                .email("admin@standalone.org")
+                .role(User.Role.ADMIN)
+                .build();
+
+        when(userRepository.findByEmail("admin@standalone.org")).thenReturn(Optional.of(admin));
+        when(organizationAdminRepository.findByUserId(1L)).thenReturn(Optional.empty());
+
+        ApiException ex = assertThrows(ApiException.class,
+                () -> organizationService.getAdminOrganizationDetails("admin@standalone.org"));
+        assertEquals(HttpStatus.NOT_FOUND, ex.getStatus());
+        assertEquals("Organization not found for authenticated admin", ex.getMessage());
     }
 }

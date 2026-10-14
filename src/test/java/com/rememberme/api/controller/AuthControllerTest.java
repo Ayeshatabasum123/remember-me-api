@@ -2,6 +2,7 @@ package com.rememberme.api.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rememberme.api.dto.request.ForgotPasswordRequest;
+import com.rememberme.api.dto.request.LoginRequest;
 import com.rememberme.api.dto.request.ResetPasswordRequest;
 import com.rememberme.api.dto.request.SendOtpRequest;
 import com.rememberme.api.dto.request.VerifyOtpRequest;
@@ -98,6 +99,76 @@ public class AuthControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.confirmPassword").value("Confirm password is required"));
+    }
+
+    @Test
+    public void login_AdminWithOrganization_Success() throws Exception {
+        LoginRequest request = new LoginRequest();
+        request.setEmail("admin@westminster.org");
+        request.setPassword("Password123!");
+
+        com.rememberme.api.dto.response.AuthResponse authResponse = com.rememberme.api.dto.response.AuthResponse.builder()
+                .id(1L)
+                .userId(1L)
+                .token("sampleAdminToken")
+                .email("admin@westminster.org")
+                .fullName("Westminster Community Church")
+                .role("ADMIN")
+                .organizationName("Westminster Community Church")
+                .organizationCode("ORG-000002")
+                .postcode("SW1A 1AA")
+                .approvalStatus("APPROVED")
+                .build();
+
+        org.mockito.Mockito.when(authService.login(org.mockito.ArgumentMatchers.any(LoginRequest.class)))
+                .thenReturn(authResponse);
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Login successful"))
+                .andExpect(jsonPath("$.data.token").value("sampleAdminToken"))
+                .andExpect(jsonPath("$.data.email").value("admin@westminster.org"))
+                .andExpect(jsonPath("$.data.role").value("ADMIN"))
+                .andExpect(jsonPath("$.data.organizationName").value("Westminster Community Church"))
+                .andExpect(jsonPath("$.data.organizationCode").value("ORG-000002"))
+                .andExpect(jsonPath("$.data.postcode").value("SW1A 1AA"))
+                .andExpect(jsonPath("$.data.approvalStatus").value("APPROVED"));
+    }
+
+    @Test
+    public void login_NormalUser_Success() throws Exception {
+        LoginRequest request = new LoginRequest();
+        request.setEmail("user@example.com");
+        request.setPassword("Password123!");
+
+        com.rememberme.api.dto.response.AuthResponse authResponse = com.rememberme.api.dto.response.AuthResponse.builder()
+                .id(2L)
+                .userId(2L)
+                .token("sampleUserToken")
+                .email("user@example.com")
+                .fullName("Regular User")
+                .role("USER")
+                .build();
+
+        org.mockito.Mockito.when(authService.login(org.mockito.ArgumentMatchers.any(LoginRequest.class)))
+                .thenReturn(authResponse);
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Login successful"))
+                .andExpect(jsonPath("$.data.token").value("sampleUserToken"))
+                .andExpect(jsonPath("$.data.email").value("user@example.com"))
+                .andExpect(jsonPath("$.data.role").value("USER"))
+                .andExpect(jsonPath("$.data.organizationName").doesNotExist())
+                .andExpect(jsonPath("$.data.organizationCode").doesNotExist())
+                .andExpect(jsonPath("$.data.postcode").doesNotExist())
+                .andExpect(jsonPath("$.data.approvalStatus").doesNotExist());
     }
 
     @Test

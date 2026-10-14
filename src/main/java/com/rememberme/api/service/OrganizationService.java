@@ -1,6 +1,7 @@
 package com.rememberme.api.service;
 
 import com.rememberme.api.dto.request.AdminRegisterRequest;
+import com.rememberme.api.dto.response.AdminOrganizationDetailsResponse;
 import com.rememberme.api.dto.response.AdminRegisterResponse;
 import com.rememberme.api.dto.response.OrganizationResponseDto;
 import com.rememberme.api.dto.response.PostcodeValidationResponse;
@@ -181,5 +182,29 @@ public class OrganizationService {
                 organization.getName(), organization.getId(), rejectionReason);
 
         return OrganizationResponseDto.fromEntity(organization);
+    }
+
+    @Transactional(readOnly = true)
+    public AdminOrganizationDetailsResponse getAdminOrganizationDetails(String adminEmail) {
+        if (!StringUtils.hasText(adminEmail)) {
+            throw new ApiException("Authentication required", HttpStatus.UNAUTHORIZED);
+        }
+
+        User user = userRepository.findByEmail(adminEmail)
+                .orElseThrow(() -> new ApiException("Admin user not found", HttpStatus.NOT_FOUND));
+
+        if (user.getRole() != User.Role.ADMIN) {
+            throw new ApiException("Access Denied: Only organization administrators can access organization details", HttpStatus.FORBIDDEN);
+        }
+
+        OrganizationAdmin orgAdmin = organizationAdminRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new ApiException("Organization not found for authenticated admin", HttpStatus.NOT_FOUND));
+
+        Organization organization = orgAdmin.getOrganization();
+        if (organization == null) {
+            throw new ApiException("Organization not found for authenticated admin", HttpStatus.NOT_FOUND);
+        }
+
+        return AdminOrganizationDetailsResponse.fromEntity(organization);
     }
 }

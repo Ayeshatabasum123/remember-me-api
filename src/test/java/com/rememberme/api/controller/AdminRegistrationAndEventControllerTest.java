@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rememberme.api.dto.request.AdminRegisterRequest;
 import com.rememberme.api.dto.request.CreateEventRequest;
 import com.rememberme.api.dto.request.UpdateEventRequest;
+import com.rememberme.api.dto.response.AdminOrganizationDetailsResponse;
 import com.rememberme.api.dto.response.AdminRegisterResponse;
 import com.rememberme.api.dto.response.EventResponseDto;
 import com.rememberme.api.dto.response.OrganizationResponseDto;
@@ -323,5 +324,47 @@ public class AdminRegistrationAndEventControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.status").value("PUBLISHED"));
+    }
+
+    @Test
+    @WithMockUser(username = "admin@westminster.org", roles = {"ADMIN"})
+    public void getMyOrganization_Success() throws Exception {
+        AdminOrganizationDetailsResponse responseDto = AdminOrganizationDetailsResponse.builder()
+                .organizationId(2L)
+                .organizationName("Westminster Community Church")
+                .organizationCode("ORG-000002")
+                .organizationType(OrganizationType.CHURCH)
+                .postcode("SW1A 1AA")
+                .approvalStatus(OrganizationApprovalStatus.APPROVED)
+                .build();
+
+        when(organizationService.getAdminOrganizationDetails("admin@westminster.org"))
+                .thenReturn(responseDto);
+
+        mockMvc.perform(get("/api/admin/organization/me")
+                        .principal(() -> "admin@westminster.org"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Organization details retrieved successfully"))
+                .andExpect(jsonPath("$.data.organizationId").value(2))
+                .andExpect(jsonPath("$.data.organizationName").value("Westminster Community Church"))
+                .andExpect(jsonPath("$.data.organizationCode").value("ORG-000002"))
+                .andExpect(jsonPath("$.data.organizationType").value("CHURCH"))
+                .andExpect(jsonPath("$.data.postcode").value("SW1A 1AA"))
+                .andExpect(jsonPath("$.data.approvalStatus").value("APPROVED"));
+    }
+
+    @Test
+    @WithMockUser(username = "admin@westminster.org", roles = {"ADMIN"})
+    public void getMyOrganization_NotFound() throws Exception {
+        when(organizationService.getAdminOrganizationDetails("admin@westminster.org"))
+                .thenThrow(new com.rememberme.api.exception.ApiException(
+                        "Organization not found for authenticated admin",
+                        org.springframework.http.HttpStatus.NOT_FOUND));
+
+        mockMvc.perform(get("/api/admin/organization/me")
+                        .principal(() -> "admin@westminster.org"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Organization not found for authenticated admin"));
     }
 }

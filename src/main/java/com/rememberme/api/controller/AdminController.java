@@ -16,6 +16,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -73,6 +74,40 @@ public class AdminController {
             return auth.getName();
         }
         throw new com.rememberme.api.exception.ApiException("Authentication required", org.springframework.http.HttpStatus.UNAUTHORIZED);
+    }
+
+    // --- ORGANIZATION DETAILS (LOGGED-IN ADMIN) ---
+
+    @GetMapping("/organization/me")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(
+            summary = "Get Logged-in Admin's Organization Details",
+            description = "Retrieves the religious organization associated with the currently authenticated admin using their JWT token.",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200",
+                    description = "Organization details retrieved successfully",
+                    content = @Content(schema = @Schema(implementation = AdminOrganizationDetailsResponse.class))
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401",
+                    description = "Unauthorized - invalid or missing JWT token"
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "403",
+                    description = "Forbidden - requires ADMIN role"
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "404",
+                    description = "Not Found - organization not found for authenticated admin"
+            )
+    })
+    public ApiResponse<AdminOrganizationDetailsResponse> getMyOrganization(Principal principal) {
+        String adminEmail = getAuthenticatedEmail(principal);
+        AdminOrganizationDetailsResponse response = organizationService.getAdminOrganizationDetails(adminEmail);
+        return ApiResponse.success("Organization details retrieved successfully", response);
     }
 
     // --- EVENT MANAGEMENT ---

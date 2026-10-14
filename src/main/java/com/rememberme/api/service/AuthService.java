@@ -7,11 +7,13 @@ import com.rememberme.api.dto.request.ResetPasswordRequest;
 import com.rememberme.api.dto.request.SendOtpRequest;
 import com.rememberme.api.dto.request.VerifyOtpRequest;
 import com.rememberme.api.dto.response.AuthResponse;
+import com.rememberme.api.entity.Organization;
 import com.rememberme.api.entity.OtpVerification;
 import com.rememberme.api.entity.PasswordResetToken;
 import com.rememberme.api.entity.TokenBlacklist;
 import com.rememberme.api.entity.User;
 import com.rememberme.api.exception.ApiException;
+import com.rememberme.api.repository.OrganizationAdminRepository;
 import com.rememberme.api.repository.OtpVerificationRepository;
 import com.rememberme.api.repository.PasswordResetTokenRepository;
 import com.rememberme.api.repository.TokenBlacklistRepository;
@@ -37,6 +39,7 @@ public class AuthService {
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final OtpVerificationRepository otpVerificationRepository;
     private final EmailService emailService;
+    private final OrganizationAdminRepository organizationAdminRepository;
 
     public AuthResponse register(RegisterRequest request) {
         if (request.getPassword() == null || request.getPassword().length() < 8) {
@@ -94,7 +97,7 @@ public class AuthService {
 
         String token = jwtUtil.generateToken(user.getEmail());
 
-        return AuthResponse.builder()
+        AuthResponse.AuthResponseBuilder responseBuilder = AuthResponse.builder()
                 .id(user.getId())
                 .userId(user.getId())
                 .token(token)
@@ -106,8 +109,22 @@ public class AuthService {
                         .fullName(user.getFullName())
                         .email(user.getEmail())
                         .role(user.getRole().name())
-                        .build())
-                .build();
+                        .build());
+
+        if (user.getRole() == User.Role.ADMIN && organizationAdminRepository != null) {
+            organizationAdminRepository.findByUserId(user.getId()).ifPresent(orgAdmin -> {
+                Organization org = orgAdmin.getOrganization();
+                if (org != null) {
+                    responseBuilder
+                            .organizationName(org.getName())
+                            .organizationCode(org.getOrganizationCode())
+                            .postcode(org.getPostcode() != null ? org.getPostcode() : user.getPostcode())
+                            .approvalStatus(org.getApprovalStatus() != null ? org.getApprovalStatus().name() : null);
+                }
+            });
+        }
+
+        return responseBuilder.build();
     }
 
     public void logout(String authHeader) {
