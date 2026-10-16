@@ -16,6 +16,11 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.poifs.filesystem.POIFSFileSystem;
+import org.apache.poi.hssf.eventusermodel.HSSFEventFactory;
+import org.apache.poi.hssf.eventusermodel.HSSFListener;
+import org.apache.poi.hssf.eventusermodel.HSSFRequest;
+import org.apache.poi.hssf.record.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -81,6 +86,7 @@ public class GraveImportService {
         private Grave.VerificationStatus verificationStatus;
         private DeceasedPerson.Gender gender;
         private String photoUrl;
+        private String postcode;
     }
 
     /**
@@ -189,6 +195,27 @@ public class GraveImportService {
                                 List<GraveImportErrorDto> errors,
                                 List<ParsedGraveRow> validRows,
                                 Set<String> seenInFile) {
+        try {
+            parseExcelFileDom(file, errors, validRows, seenInFile);
+        } catch (ApiException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("DOM-based Excel parser encountered error ({}), falling back to HSSF streaming parser...", e.getMessage());
+            try {
+                parseHssfEventStream(file, errors, validRows, seenInFile);
+            } catch (ApiException ae) {
+                throw ae;
+            } catch (Exception fallbackEx) {
+                log.error("Both DOM and HSSF streaming Excel parsers failed", fallbackEx);
+                throw new ApiException("Failed to parse Excel file: " + e.getMessage(), HttpStatus.BAD_REQUEST);
+            }
+        }
+    }
+
+    private void parseExcelFileDom(MultipartFile file,
+                                   List<GraveImportErrorDto> errors,
+                                   List<ParsedGraveRow> validRows,
+                                   Set<String> seenInFile) throws Exception {
         try (InputStream is = file.getInputStream();
              Workbook workbook = WorkbookFactory.create(is)) {
 
@@ -250,13 +277,120 @@ public class GraveImportService {
 
                 parseAndValidateRow(lineNumber, columns, headerIndexMap, errors, validRows, seenInFile, "Excel");
             }
-
-        } catch (ApiException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("Failed to parse Excel file", e);
-            throw new ApiException("Failed to parse Excel file: " + e.getMessage(), HttpStatus.BAD_REQUEST);
         }
+    }
+
+    private void parseHssfEventStream(MultipartFile file,
+                                      List<GraveImportErrorDto> errors,
+                                      List<ParsedGraveRow> validRows,
+                                      Set<String> seenInFile) throws Exception {
+        try (InputStream is = file.getInputStream();
+             POIFSFileSystem poifs = new POIFSFileSystem(is)) {
+
+            HSSFRequest req = new HSSFRequest();
+            List<Map<Integer, Map<Integer, String>>> sheetRows = new ArrayList<>();
+            int[] currentSheetIndex = {-1};
+            SSTRecord[] sstHolder = new SSTRecord[1];
+
+            req.addListenerForAllRecords(record -> {
+                if (record instanceof BOFRecord bof) {
+                    if (bof.getType() == BOFRecord.TYPE_WORKSHEET) {
+                        sheetRows.add(new TreeMap<>());
+                        currentSheetIndex[0]++;
+                    }
+                } else if (record instanceof SSTRecord sst) {
+                    sstHolder[0] = sst;
+                } else if (currentSheetIndex[0] >= 0 && currentSheetIndex[0] < sheetRows.size()) {
+                    Map<Integer, Map<Integer, String>> rows = sheetRows.get(currentSheetIndex[0]);
+                    if (record instanceof LabelSSTRecord l) {
+                        if (sstHolder[0] != null) {
+                            String str = sstHolder[0].getString(l.getSSTIndex()).getString();
+                            rows.computeIfAbsent(l.getRow(), k -> new TreeMap<>()).put((int) l.getColumn(), str != null ? str.trim() : "");
+                        }
+                    } else if (record instanceof LabelRecord l) {
+                        String val = l.getValue();
+                        rows.computeIfAbsent(l.getRow(), k -> new TreeMap<>()).put((int) l.getColumn(), val != null ? val.trim() : "");
+                    } else if (record instanceof NumberRecord n) {
+                        String formatted = formatNumericValue(n.getValue());
+                        rows.computeIfAbsent(n.getRow(), k -> new TreeMap<>()).put((int) n.getColumn(), formatted);
+                    } else if (record instanceof FormulaRecord f) {
+                        String formatted = formatNumericValue(f.getValue());
+                        rows.computeIfAbsent(f.getRow(), k -> new TreeMap<>()).put((int) f.getColumn(), formatted);
+                    }
+                }
+            });
+
+            HSSFEventFactory factory = new HSSFEventFactory();
+            factory.processWorkbookEvents(req, poifs);
+
+            if (sheetRows.isEmpty()) {
+                throw new ApiException("Excel file contains no sheets", HttpStatus.BAD_REQUEST);
+            }
+
+            // Find the sheet that contains the required grave import headers
+            Map<Integer, Map<Integer, String>> targetSheet = null;
+            Map<String, Integer> targetHeaderMap = null;
+            int headerRowNum = -1;
+
+            for (Map<Integer, Map<Integer, String>> candidateSheet : sheetRows) {
+                for (Map.Entry<Integer, Map<Integer, String>> rowEntry : candidateSheet.entrySet()) {
+                    List<String> rowCells = cellMapToList(rowEntry.getValue());
+                    Map<String, Integer> headerIndexMap = mapHeaders(rowCells);
+                    if (hasRequiredHeaders(headerIndexMap)) {
+                        targetSheet = candidateSheet;
+                        targetHeaderMap = headerIndexMap;
+                        headerRowNum = rowEntry.getKey();
+                        break;
+                    }
+                }
+                if (targetSheet != null) {
+                    break;
+                }
+            }
+
+            if (targetSheet == null || targetHeaderMap == null) {
+                validateHeaders(Collections.emptyMap(), "Excel");
+                return;
+            }
+
+            for (Map.Entry<Integer, Map<Integer, String>> rowEntry : targetSheet.entrySet()) {
+                if (rowEntry.getKey() <= headerRowNum) {
+                    continue;
+                }
+                int lineNumber = rowEntry.getKey() + 1; // 1-based index
+                List<String> columns = cellMapToList(rowEntry.getValue());
+                if (isRowEmpty(columns)) {
+                    continue;
+                }
+                parseAndValidateRow(lineNumber, columns, targetHeaderMap, errors, validRows, seenInFile, "Excel");
+            }
+        }
+    }
+
+    private boolean hasRequiredHeaders(Map<String, Integer> headerIndexMap) {
+        return headerIndexMap.containsKey("serialnumber")
+                && headerIndexMap.containsKey("cemeteryname")
+                && headerIndexMap.containsKey("city")
+                && headerIndexMap.containsKey("country")
+                && headerIndexMap.containsKey("gravenumber")
+                && headerIndexMap.containsKey("latitude")
+                && headerIndexMap.containsKey("longitude")
+                && headerIndexMap.containsKey("deceasedname")
+                && headerIndexMap.containsKey("dateofbirth")
+                && headerIndexMap.containsKey("dateofdeath")
+                && headerIndexMap.containsKey("biography");
+    }
+
+    private List<String> cellMapToList(Map<Integer, String> cellMap) {
+        if (cellMap == null || cellMap.isEmpty()) {
+            return Collections.emptyList();
+        }
+        int maxCol = cellMap.keySet().stream().max(Integer::compareTo).orElse(0);
+        List<String> list = new ArrayList<>(maxCol + 1);
+        for (int i = 0; i <= maxCol; i++) {
+            list.add(cellMap.getOrDefault(i, ""));
+        }
+        return list;
     }
 
     private String getExcelCellValueAsString(Cell cell, FormulaEvaluator evaluator, DataFormatter dataFormatter) {
@@ -298,6 +432,10 @@ public class GraveImportService {
             case NUMERIC:
                 if (DateUtil.isCellDateFormatted(cell)) {
                     return formatExcelDateCell(cell);
+                }
+                String formatted = dataFormatter.formatCellValue(cell);
+                if (formatted != null && !formatted.trim().isEmpty()) {
+                    return formatted.trim();
                 }
                 return formatNumericValue(cell.getNumericCellValue());
             case BOOLEAN:
@@ -367,8 +505,8 @@ public class GraveImportService {
             try {
                 RememberMe graveyard = resolveOrCreateGraveyard(row, resolvedGraveyardsByName, adminUser);
 
-                // Check duplicate grave within this specific graveyard in DB
-                if (graveRepository.existsByRememberMeIdAndGraveNumberIgnoreCase(graveyard.getId(), row.getGraveNumber())) {
+                // Check duplicate grave within this specific graveyard in DB (only for specific/known grave numbers)
+                if (!isUnknownGraveNumber(row.getGraveNumber()) && graveRepository.existsByRememberMeIdAndGraveNumberIgnoreCase(graveyard.getId(), row.getGraveNumber())) {
                     errors.add(new GraveImportErrorDto(row.getRowNumber(),
                             "Duplicate grave record: Grave number '" + row.getGraveNumber() + "' already exists in cemetery '" +
                                     graveyard.getName() + "' (ID: " + graveyard.getId() + ")"));
@@ -380,6 +518,7 @@ public class GraveImportService {
                 Grave grave = Grave.builder()
                         .rememberMe(graveyard)
                         .graveNumber(row.getGraveNumber())
+                        .postcode(row.getPostcode())
                         .latitude(row.getLatitude())
                         .longitude(row.getLongitude())
                         .locationAccuracy(row.getLocationAccuracy())
@@ -507,6 +646,16 @@ public class GraveImportService {
         String verificationStatusStr = getColumnValue(columns, headerIndexMap, "verificationstatus");
         String genderStr = getColumnValue(columns, headerIndexMap, "gender");
         String photoUrl = getColumnValue(columns, headerIndexMap, "photourl");
+        String postcode = getColumnValue(columns, headerIndexMap, "postcode");
+        if (postcode != null) {
+            postcode = postcode.trim();
+            if (postcode.isEmpty()) {
+                postcode = null;
+            } else if (postcode.length() > 50) {
+                errors.add(new GraveImportErrorDto(rowNumber, "Postcode must not exceed 50 characters."));
+                return;
+            }
+        }
 
         // 1. Validate serialNumber
         if (serialNumber == null || serialNumber.trim().isEmpty()) {
@@ -554,6 +703,10 @@ public class GraveImportService {
             return;
         }
         graveNumber = graveNumber.trim();
+        if (graveNumber.length() > 100) {
+            errors.add(new GraveImportErrorDto(rowNumber, "Grave number must not exceed 100 characters."));
+            return;
+        }
 
         // 4. Validate latitude
         if (latitudeStr == null || latitudeStr.trim().isEmpty()) {
@@ -683,12 +836,24 @@ public class GraveImportService {
 
         // Duplicate check within the file for the SAME cemetery
         String cemeteryKey = cemeteryName.toLowerCase();
-        String fileKey = cemeteryKey + "::" + graveNumber.toLowerCase();
-        if (!seenInFile.add(fileKey)) {
-            String duplicateMsg = "Duplicate grave record in " + fileType + " file: Grave number '" +
-                    graveNumber + "' already listed for cemetery '" + cemeteryName + "'";
-            errors.add(new GraveImportErrorDto(rowNumber, duplicateMsg));
-            return;
+        if (isUnknownGraveNumber(graveNumber)) {
+            // When grave number is Unknown, multiple records can have Unknown in the same cemetery.
+            // Duplicate check ensures the same deceased person is not listed twice with an unknown grave in the same cemetery.
+            String fileKey = cemeteryKey + "::unknown::" + deceasedName.toLowerCase();
+            if (!seenInFile.add(fileKey)) {
+                String duplicateMsg = "Duplicate grave record in " + fileType + " file: Deceased '" +
+                        deceasedName + "' with unknown grave already listed for cemetery '" + cemeteryName + "'";
+                errors.add(new GraveImportErrorDto(rowNumber, duplicateMsg));
+                return;
+            }
+        } else {
+            String fileKey = cemeteryKey + "::" + graveNumber.toLowerCase();
+            if (!seenInFile.add(fileKey)) {
+                String duplicateMsg = "Duplicate grave record in " + fileType + " file: Grave number '" +
+                        graveNumber + "' already listed for cemetery '" + cemeteryName + "'";
+                errors.add(new GraveImportErrorDto(rowNumber, duplicateMsg));
+                return;
+            }
         }
 
         // Valid row -> create ParsedGraveRow
@@ -709,6 +874,7 @@ public class GraveImportService {
                 .verificationStatus(status)
                 .gender(gender)
                 .photoUrl(effectivePhotoUrl)
+                .postcode(postcode)
                 .build();
 
         validRows.add(parsed);
@@ -801,6 +967,8 @@ public class GraveImportService {
                 map.put("gender", i);
             } else if (normalized.equals("photourl") || normalized.equals("photo") || normalized.equals("image") || normalized.equals("imageurl")) {
                 map.put("photourl", i);
+            } else if (normalized.equals("postcode") || normalized.equals("postalcode") || normalized.equals("zip") || normalized.equals("zipcode") || normalized.equals("pincode")) {
+                map.put("postcode", i);
             }
         }
         return map;
@@ -861,5 +1029,17 @@ public class GraveImportService {
         tokens.add(sb.toString().trim());
 
         return tokens;
+    }
+
+    public boolean isUnknownGraveNumber(String graveNumber) {
+        if (graveNumber == null) {
+            return true;
+        }
+        String trimmed = graveNumber.trim().toLowerCase();
+        return trimmed.equals("unknown")
+                || trimmed.equals("n/a")
+                || trimmed.equals("na")
+                || trimmed.equals("?")
+                || trimmed.equals("-");
     }
 }

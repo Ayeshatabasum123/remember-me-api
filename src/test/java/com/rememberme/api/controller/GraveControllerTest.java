@@ -65,6 +65,7 @@ public class GraveControllerTest {
         Grave grave = Grave.builder()
                 .id(1L)
                 .graveNumber("12")
+                .postcode("SW1A 1AA")
                 .rememberMe(rememberMe)
                 .latitude(28.6139)
                 .longitude(77.2090)
@@ -81,7 +82,8 @@ public class GraveControllerTest {
                 .andExpect(jsonPath("$.data[0].id").value(1))
                 .andExpect(jsonPath("$.data[0].city").value("Delhi"))
                 .andExpect(jsonPath("$.data[0].country").value("India"))
-                .andExpect(jsonPath("$.data[0].graveNumber").value(12));
+                .andExpect(jsonPath("$.data[0].graveNumber").value("12"))
+                .andExpect(jsonPath("$.data[0].postcode").value("SW1A 1AA"));
     }
 
     @Test
@@ -228,5 +230,60 @@ public class GraveControllerTest {
                 .content(json))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.message").value("Grave already exists."));
+    }
+
+    @Test
+    public void getGrave_ReturnsPostcodeAndGraveNumberAsString() throws Exception {
+        RememberMe rememberMe = RememberMe.builder()
+                .id(1L)
+                .name("Westminster Abbey")
+                .city("London")
+                .country("United Kingdom")
+                .build();
+        Grave grave = Grave.builder()
+                .id(5L)
+                .graveNumber("GR-205")
+                .postcode("SW1P 3PA")
+                .rememberMe(rememberMe)
+                .latitude(51.4994)
+                .longitude(-0.1274)
+                .build();
+
+        when(graveRepository.findById(5L)).thenReturn(Optional.of(grave));
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/graves/{id}", 5L))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.id").value(5))
+                .andExpect(jsonPath("$.data.graveNumber").value("GR-205"))
+                .andExpect(jsonPath("$.data.postcode").value("SW1P 3PA"))
+                .andExpect(jsonPath("$.data.city").value("London"))
+                .andExpect(jsonPath("$.data.country").value("United Kingdom"));
+    }
+
+    @Test
+    public void getGrave_UnknownGraveNumber_ReturnsStringUnknown() throws Exception {
+        RememberMe rememberMe = RememberMe.builder()
+                .id(2L)
+                .name("St Paul's Cathedral")
+                .city("London")
+                .country("United Kingdom")
+                .build();
+        Grave grave = Grave.builder()
+                .id(6L)
+                .graveNumber("Unknown")
+                .postcode("EC4M 8AD")
+                .rememberMe(rememberMe)
+                .latitude(51.5138)
+                .longitude(-0.0984)
+                .build();
+
+        when(graveRepository.findById(6L)).thenReturn(Optional.of(grave));
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/graves/{id}", 6L))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.graveNumber").value("Unknown"))
+                .andExpect(jsonPath("$.data.postcode").value("EC4M 8AD"));
     }
 }

@@ -26,7 +26,11 @@ public class Grave {
     @JoinColumn(name = "graveyard_id", nullable = false)
     private RememberMe rememberMe;
 
+    @Column(name = "grave_number")
     private String graveNumber;
+
+    @Column(name = "postcode", length = 50)
+    private String postcode;
 
     @Column(nullable = false)
     private Double latitude;

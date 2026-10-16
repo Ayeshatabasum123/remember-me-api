@@ -843,4 +843,142 @@ public class GraveImportServiceTest {
             return out.toByteArray();
         }
     }
+
+    @Test
+    public void importGraves_UnknownGraveNumber_MultipleInSameCemetery_Success() {
+        String csvContent = "serialNumber,cemeteryName,city,country,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography,postcode\n" +
+                "1,Westminster Abbey,London,United Kingdom,Unknown,51.499,-0.127,Isaac Newton,04/01/1643,31/03/1727,Physicist and mathematician,SW1P 3PA\n" +
+                "2,Westminster Abbey,London,United Kingdom,Unknown,51.499,-0.127,Charles Darwin,12/02/1809,19/04/1882,Naturalist,SW1P 3PA\n";
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
+
+        when(userRepository.findByEmail("superadmin@example.com")).thenReturn(Optional.of(mockAdminUser));
+        when(rememberMeRepository.findFirstByNameIgnoreCase("Westminster Abbey")).thenReturn(Optional.of(mockGraveyard));
+        when(graveRepository.save(any(Grave.class))).thenAnswer(i -> i.getArgument(0));
+
+        GraveImportResponseDto response = graveImportService.importGraves(file, "superadmin@example.com");
+
+        assertNotNull(response);
+        assertEquals(2, response.getTotalRecords());
+        assertEquals(2, response.getSuccessfulRecords());
+        assertEquals(0, response.getFailedRecords());
+        assertTrue(response.getErrors().isEmpty());
+
+        ArgumentCaptor<Grave> graveCaptor = ArgumentCaptor.forClass(Grave.class);
+        verify(graveRepository, times(2)).save(graveCaptor.capture());
+        List<Grave> savedGraves = graveCaptor.getAllValues();
+        assertEquals("Unknown", savedGraves.get(0).getGraveNumber());
+        assertEquals("SW1P 3PA", savedGraves.get(0).getPostcode());
+        assertEquals("Unknown", savedGraves.get(1).getGraveNumber());
+        assertEquals("SW1P 3PA", savedGraves.get(1).getPostcode());
+    }
+
+    @Test
+    public void importGraves_AlphanumericGraveNumbersAndPostcodes_Success() {
+        String csvContent = "serialNumber,cemeteryName,city,country,graveNumber,postcode,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
+                "1,Lincoln Tomb,Springfield,USA,1,SW1A 1AA,39.8203,-89.6538,Person One,02/10/1869,30/01/1948,Bio 1\n" +
+                "2,Lincoln Tomb,Springfield,USA,12,01234,39.8204,-89.6539,Person Two,02-10-1869,30-01-1948,Bio 2\n" +
+                "3,Lincoln Tomb,Springfield,USA,A101,NW3 2QD,39.8205,-89.6540,Person Three,02/10/1869,30-01-1948,Bio 3\n" +
+                "4,Lincoln Tomb,Springfield,USA,GR-205,EC4M 8AD,39.8206,-89.6541,Person Four,02-10-1869,30/01/1948,Bio 4\n" +
+                "5,Lincoln Tomb,Springfield,USA,Unknown,,39.8207,-89.6542,Person Five,02-10-1869,30/01/1948,Bio 5\n";
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
+
+        when(userRepository.findByEmail("superadmin@example.com")).thenReturn(Optional.of(mockAdminUser));
+        when(rememberMeRepository.findFirstByNameIgnoreCase("Lincoln Tomb")).thenReturn(Optional.of(mockGraveyard));
+        when(graveRepository.save(any(Grave.class))).thenAnswer(i -> i.getArgument(0));
+
+        GraveImportResponseDto response = graveImportService.importGraves(file, "superadmin@example.com");
+
+        assertNotNull(response);
+        assertEquals(5, response.getTotalRecords());
+        assertEquals(5, response.getSuccessfulRecords());
+        assertEquals(0, response.getFailedRecords());
+
+        ArgumentCaptor<Grave> graveCaptor = ArgumentCaptor.forClass(Grave.class);
+        verify(graveRepository, times(5)).save(graveCaptor.capture());
+        List<Grave> savedGraves = graveCaptor.getAllValues();
+
+        assertEquals("1", savedGraves.get(0).getGraveNumber());
+        assertEquals("SW1A 1AA", savedGraves.get(0).getPostcode());
+
+        assertEquals("12", savedGraves.get(1).getGraveNumber());
+        assertEquals("01234", savedGraves.get(1).getPostcode());
+
+        assertEquals("A101", savedGraves.get(2).getGraveNumber());
+        assertEquals("NW3 2QD", savedGraves.get(2).getPostcode());
+
+        assertEquals("GR-205", savedGraves.get(3).getGraveNumber());
+        assertEquals("EC4M 8AD", savedGraves.get(3).getPostcode());
+
+        assertEquals("Unknown", savedGraves.get(4).getGraveNumber());
+        assertNull(savedGraves.get(4).getPostcode());
+    }
+
+    @Test
+    public void importGraves_UnknownGraveNumber_SameDeceasedInSameCemetery_RejectsDuplicate() {
+        String csvContent = "serialNumber,cemeteryName,city,country,graveNumber,latitude,longitude,deceasedName,dateOfBirth,dateOfDeath,biography\n" +
+                "1,Westminster Abbey,London,United Kingdom,Unknown,51.499,-0.127,Isaac Newton,04/01/1643,31/03/1727,Physicist and mathematician\n" +
+                "2,Westminster Abbey,London,United Kingdom,Unknown,51.499,-0.127,Isaac Newton,04/01/1643,31/03/1727,Physicist and mathematician\n";
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "graves.csv", "text/csv", csvContent.getBytes(StandardCharsets.UTF_8));
+
+        when(userRepository.findByEmail("superadmin@example.com")).thenReturn(Optional.of(mockAdminUser));
+        when(rememberMeRepository.findFirstByNameIgnoreCase("Westminster Abbey")).thenReturn(Optional.of(mockGraveyard));
+        when(graveRepository.save(any(Grave.class))).thenAnswer(i -> i.getArgument(0));
+
+        GraveImportResponseDto response = graveImportService.importGraves(file, "superadmin@example.com");
+
+        assertEquals(2, response.getTotalRecords());
+        assertEquals(1, response.getSuccessfulRecords());
+        assertEquals(1, response.getFailedRecords());
+        assertEquals(3, response.getErrors().get(0).getRow());
+        assertTrue(response.getErrors().get(0).getMessage().contains("Duplicate grave record in CSV file"));
+    }
+
+    @Test
+    public void importGraves_UserAttachedXlsFile_All20Records_ImportSuccess() throws Exception {
+        byte[] xlsBytes = java.nio.file.Files.readAllBytes(
+                java.nio.file.Path.of("src/test/resources/uk_famous_deceased_20_unknown_graves_photos.xls"));
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "uk_famous_deceased_20_unknown_graves_photos.xls", "application/vnd.ms-excel", xlsBytes);
+
+        when(userRepository.findByEmail("superadmin@example.com")).thenReturn(Optional.of(mockAdminUser));
+        when(rememberMeRepository.findFirstByNameIgnoreCase(anyString())).thenReturn(Optional.empty());
+        when(rememberMeRepository.save(any(RememberMe.class))).thenAnswer(i -> {
+            RememberMe rm = i.getArgument(0);
+            rm.setId(100L);
+            return rm;
+        });
+        when(graveRepository.save(any(Grave.class))).thenAnswer(i -> {
+            Grave g = i.getArgument(0);
+            g.setId(200L);
+            return g;
+        });
+        when(deceasedPersonRepository.save(any(DeceasedPerson.class))).thenAnswer(i -> i.getArgument(0));
+
+        // When photo validation succeeds for provided photos
+        when(photoUrlValidator.validatePhotoUrl(anyString())).thenReturn(PhotoUrlValidator.ValidationResult.success());
+
+        GraveImportResponseDto response = graveImportService.importGraves(file, "superadmin@example.com");
+
+        assertNotNull(response);
+        assertEquals(20, response.getTotalRecords());
+        assertEquals(20, response.getSuccessfulRecords());
+        assertEquals(0, response.getFailedRecords());
+        assertTrue(response.getErrors().isEmpty());
+
+        ArgumentCaptor<Grave> graveCaptor = ArgumentCaptor.forClass(Grave.class);
+        verify(graveRepository, times(20)).save(graveCaptor.capture());
+        List<Grave> graves = graveCaptor.getAllValues();
+
+        for (Grave g : graves) {
+            assertEquals("Unknown", g.getGraveNumber());
+            assertNotNull(g.getPostcode());
+            assertFalse(g.getPostcode().trim().isEmpty());
+        }
+    }
 }

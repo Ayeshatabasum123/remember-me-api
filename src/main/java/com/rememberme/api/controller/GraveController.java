@@ -51,13 +51,14 @@ public class GraveController {
         RememberMe rememberMe = rememberMeRepository.findById(request.getRememberMeId()).orElseThrow();
 
         String trimmedGraveNumber = request.getGraveNumber() != null ? request.getGraveNumber().trim() : "";
-        if (!trimmedGraveNumber.isEmpty() && graveRepository.existsByRememberMeIdAndGraveNumberIgnoreCase(rememberMe.getId(), trimmedGraveNumber)) {
+        if (!trimmedGraveNumber.isEmpty() && !trimmedGraveNumber.equalsIgnoreCase("unknown") && graveRepository.existsByRememberMeIdAndGraveNumberIgnoreCase(rememberMe.getId(), trimmedGraveNumber)) {
             throw new ApiException("Grave already exists.", HttpStatus.CONFLICT);
         }
 
         Grave grave = Grave.builder()
                 .rememberMe(rememberMe)
                 .graveNumber(request.getGraveNumber())
+                .postcode(request.getPostcode())
                 .latitude(request.getLatitude())
                 .longitude(request.getLongitude())
                 .locationAccuracy(request.getLocationAccuracy())
@@ -224,7 +225,8 @@ public class GraveController {
                 .id(grave.getId())
                 .city(graveyard != null ? graveyard.getCity() : null)
                 .country(graveyard != null ? graveyard.getCountry() : null)
-                .graveNumber(GraveResponseDto.parseGraveNumber(grave.getGraveNumber()))
+                .graveNumber(grave.getGraveNumber())
+                .postcode(grave.getPostcode())
                 .latitude(grave.getLatitude())
                 .longitude(grave.getLongitude())
                 .locationAccuracy(grave.getLocationAccuracy())

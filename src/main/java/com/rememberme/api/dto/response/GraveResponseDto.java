@@ -20,7 +20,13 @@ public class GraveResponseDto {
     private Long id;
     private String city;
     private String country;
-    private Object graveNumber;
+
+    @io.swagger.v3.oas.annotations.media.Schema(description = "Grave or plot number returned as String (e.g. '1', '12', 'A101', 'GR-205', 'Unknown')", example = "A101")
+    private String graveNumber;
+
+    @io.swagger.v3.oas.annotations.media.Schema(description = "Postcode returned as String (e.g. 'SW1A 1AA', 'NW3 2QD', 'EC4M 8AD')", example = "SW1A 1AA")
+    private String postcode;
+
     private Double latitude;
     private Double longitude;
     private Double locationAccuracy;
@@ -44,17 +50,7 @@ public class GraveResponseDto {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
-    public static Object parseGraveNumber(String graveNumber) {
-        if (graveNumber == null) {
-            return null;
-        }
-        String trimmed = graveNumber.trim();
-        if (trimmed.matches("^-?\\d+$")) {
-            try {
-                return Long.parseLong(trimmed);
-            } catch (NumberFormatException ignored) {
-            }
-        }
-        return trimmed;
+    public static String parseGraveNumber(String graveNumber) {
+        return graveNumber != null ? graveNumber.trim() : null;
     }
 }

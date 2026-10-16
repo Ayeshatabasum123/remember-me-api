@@ -208,12 +208,29 @@ public class AdminController {
     @PostMapping(value = "/graves/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(
-            summary = "Bulk import grave/cemetery records from a CSV or Excel file",
-            description = "Validates and imports grave records from a CSV (.csv) or Excel (.xls, .xlsx) file. Protected by ADMIN role.",
+            summary = "Bulk import grave/cemetery records from CSV or Excel file",
+            description = "Validates and imports grave records from a CSV (.csv) or Excel (.xls, .xlsx) file. Protected by ADMIN role.\n\n" +
+                    "### Supported Formats\n" +
+                    "- `.csv`, `.xls`, `.xlsx`\n\n" +
+                    "### Column Specifications\n" +
+                    "- **serialNumber** (Required): Sequential record identifier (e.g., '1', '6')\n" +
+                    "- **cemeteryName** (Required): Name of graveyard/cemetery (auto-created if new)\n" +
+                    "- **city** (Required): City of the cemetery (max 100 chars)\n" +
+                    "- **country** (Required): Country of the cemetery (max 100 chars)\n" +
+                    "- **graveNumber** (Required): Alphanumeric or numeric string plot number (e.g., '1', '12', 'A101', 'GR-205', 'Unknown')\n" +
+                    "- **postcode** (Optional): Postal code stored as String (e.g., 'SW1A 1AA', 'NW3 2QD', 'EC4M 8AD'), preserving leading zeros and spaces\n" +
+                    "- **latitude** (Required): Decimal latitude between -90 and 90\n" +
+                    "- **longitude** (Required): Decimal longitude between -180 and 180\n" +
+                    "- **deceasedName** (Required): Full name of deceased person (max 100 chars)\n" +
+                    "- **dateOfBirth** (Required): Birth date in DD/MM/YYYY or DD-MM-YYYY format\n" +
+                    "- **dateOfDeath** (Required): Death date in DD/MM/YYYY or DD-MM-YYYY format (>= dateOfBirth)\n" +
+                    "- **biography** (Required): Biographical description (max 200 chars)\n" +
+                    "- **photoUrl** (Optional): HTTPS URL to a valid JPEG image (max 1MB)\n\n" +
+                    "Returns row-by-row validation feedback and import statistics.",
             security = @SecurityRequirement(name = "bearerAuth")
     )
     public ApiResponse<GraveImportResponseDto> importGraves(
-            @Parameter(description = "CSV or Excel file (.csv, .xls, .xlsx) containing grave data", required = true,
+            @Parameter(description = "Upload CSV (.csv) or Excel (.xls, .xlsx) file containing grave records with columns: serialNumber, cemeteryName, city, country, graveNumber, postcode, latitude, longitude, deceasedName, dateOfBirth, dateOfDeath, biography, photoUrl", required = true,
                     content = @Content(mediaType = MediaType.MULTIPART_FORM_DATA_VALUE,
                             schema = @Schema(type = "string", format = "binary")))
             @RequestParam("file") MultipartFile file,
