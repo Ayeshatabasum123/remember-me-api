@@ -651,8 +651,8 @@ public class GraveImportService {
             postcode = postcode.trim();
             if (postcode.isEmpty()) {
                 postcode = null;
-            } else if (postcode.length() > 50) {
-                errors.add(new GraveImportErrorDto(rowNumber, "Postcode must not exceed 50 characters."));
+            } else if (postcode.length() > 20) {
+                errors.add(new GraveImportErrorDto(rowNumber, "Postcode must not exceed 20 characters."));
                 return;
             }
         }

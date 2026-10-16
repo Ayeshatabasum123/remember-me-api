@@ -208,27 +208,86 @@ public class AdminController {
     @PostMapping(value = "/graves/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(
-            summary = "Bulk import grave/cemetery records from CSV or Excel file",
+            summary = "Bulk import grave and deceased records from CSV or Excel file",
             description = "Validates and imports grave records from a CSV (.csv) or Excel (.xls, .xlsx) file. Protected by ADMIN role.\n\n" +
-                    "### Supported Formats\n" +
-                    "- `.csv`, `.xls`, `.xlsx`\n\n" +
-                    "### Column Specifications\n" +
-                    "- **serialNumber** (Required): Sequential record identifier (e.g., '1', '6')\n" +
-                    "- **cemeteryName** (Required): Name of graveyard/cemetery (auto-created if new)\n" +
-                    "- **city** (Required): City of the cemetery (max 100 chars)\n" +
-                    "- **country** (Required): Country of the cemetery (max 100 chars)\n" +
-                    "- **graveNumber** (Required): Alphanumeric or numeric string plot number (e.g., '1', '12', 'A101', 'GR-205', 'Unknown')\n" +
-                    "- **postcode** (Optional): Postal code stored as String (e.g., 'SW1A 1AA', 'NW3 2QD', 'EC4M 8AD'), preserving leading zeros and spaces\n" +
-                    "- **latitude** (Required): Decimal latitude between -90 and 90\n" +
-                    "- **longitude** (Required): Decimal longitude between -180 and 180\n" +
-                    "- **deceasedName** (Required): Full name of deceased person (max 100 chars)\n" +
-                    "- **dateOfBirth** (Required): Birth date in DD/MM/YYYY or DD-MM-YYYY format\n" +
-                    "- **dateOfDeath** (Required): Death date in DD/MM/YYYY or DD-MM-YYYY format (>= dateOfBirth)\n" +
-                    "- **biography** (Required): Biographical description (max 200 chars)\n" +
-                    "- **photoUrl** (Optional): HTTPS URL to a valid JPEG image (max 1MB)\n\n" +
-                    "Returns row-by-row validation feedback and import statistics.",
+                    "### Supported File Types\n" +
+                    "- `.csv` (Comma Separated Values, UTF-8, RFC 4180 compliant)\n" +
+                    "- `.xls` (Microsoft Excel 97-2003 format)\n" +
+                    "- `.xlsx` (Microsoft Excel OpenXML format)\n\n" +
+                    "### Required & Optional Column Specifications (13 Columns)\n" +
+                    "Columns may appear in any order in the file header:\n\n" +
+                    "| # | Column Name | Data Type | Requirement & Validation |\n" +
+                    "|---|---|---|---|\n" +
+                    "| 1 | `serialNumber` | String | **Required**. Sequential row/record identifier (e.g. '1', '2'). |\n" +
+                    "| 2 | `cemeteryName` | String | **Required**. Name of graveyard/cemetery (auto-created if new). |\n" +
+                    "| 3 | `city` | String | **Required**. City of the cemetery (maximum 100 characters). |\n" +
+                    "| 4 | `country` | String | **Required**. Country of the cemetery (maximum 100 characters). |\n" +
+                    "| 5 | `graveNumber` | String | **Required**. Alphanumeric or numeric string plot number (e.g., '1', '12', 'A101', 'GR-205', 'Unknown'). Supports 'Unknown' for unidentified plots. |\n" +
+                    "| 6 | `postcode` | String | **Optional** (nullable). Postal code stored as String (e.g., 'SW1A 1AA', 'NW3 2QD', 'EC4M 8AD', '01234'), preserving leading zeros and spaces (max 20 chars). |\n" +
+                    "| 7 | `latitude` | Double | **Required**. Decimal latitude between -90.0 and 90.0. |\n" +
+                    "| 8 | `longitude` | Double | **Required**. Decimal longitude between -180.0 and 180.0. |\n" +
+                    "| 9 | `deceasedName` | String | **Required**. Full name of the deceased person (maximum 100 characters). |\n" +
+                    "| 10 | `dateOfBirth` | LocalDate | **Required**. Birth date in `DD/MM/YYYY` or `DD-MM-YYYY` format (or Excel native date cell). |\n" +
+                    "| 11 | `dateOfDeath` | LocalDate | **Required**. Death date in `DD/MM/YYYY` or `DD-MM-YYYY` format (must be on or after dateOfBirth). |\n" +
+                    "| 12 | `biography` | String | **Required**. Biographical summary (maximum 200 characters). |\n" +
+                    "| 13 | `photoUrl` | String | **Optional** (nullable). Valid HTTPS JPEG image URL (maximum file size 1 MB). Rejected if PNG, GIF, WebP, or oversized. |\n\n" +
+                    "### Example Success Response (200 OK)\n" +
+                    "```json\n" +
+                    "{\n" +
+                    "  \"success\": true,\n" +
+                    "  \"message\": \"Graves import completed: 20 successful, 0 failed\",\n" +
+                    "  \"data\": {\n" +
+                    "    \"totalRecords\": 20,\n" +
+                    "    \"successfulRecords\": 20,\n" +
+                    "    \"failedRecords\": 0,\n" +
+                    "    \"errors\": []\n" +
+                    "  }\n" +
+                    "}\n" +
+                    "```\n\n" +
+                    "### Example Validation Error Response (200 OK with Row Errors)\n" +
+                    "```json\n" +
+                    "{\n" +
+                    "  \"success\": true,\n" +
+                    "  \"message\": \"Graves import completed: 18 successful, 2 failed\",\n" +
+                    "  \"data\": {\n" +
+                    "    \"totalRecords\": 20,\n" +
+                    "    \"successfulRecords\": 18,\n" +
+                    "    \"failedRecords\": 2,\n" +
+                    "    \"errors\": [\n" +
+                    "      {\n" +
+                    "        \"row\": 9,\n" +
+                    "        \"message\": \"Only JPG and JPEG image URLs are allowed.\"\n" +
+                    "      },\n" +
+                    "      {\n" +
+                    "        \"row\": 17,\n" +
+                    "        \"message\": \"Image size must not exceed 1 MB.\"\n" +
+                    "      }\n" +
+                    "    ]\n" +
+                    "  }\n" +
+                    "}\n" +
+                    "```",
             security = @SecurityRequirement(name = "bearerAuth")
     )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200",
+                    description = "Import process completed. Contains counts of successful/failed records and detailed row-level error messages.",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = GraveImportResponseDto.class))
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "400",
+                    description = "Invalid file format, empty file, or missing required column headers."
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401",
+                    description = "Unauthorized - invalid or missing JWT token"
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "403",
+                    description = "Forbidden - requires ADMIN role"
+            )
+    })
     public ApiResponse<GraveImportResponseDto> importGraves(
             @Parameter(description = "Upload CSV (.csv) or Excel (.xls, .xlsx) file containing grave records with columns: serialNumber, cemeteryName, city, country, graveNumber, postcode, latitude, longitude, deceasedName, dateOfBirth, dateOfDeath, biography, photoUrl", required = true,
                     content = @Content(mediaType = MediaType.MULTIPART_FORM_DATA_VALUE,

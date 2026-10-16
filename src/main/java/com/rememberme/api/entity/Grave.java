@@ -29,7 +29,7 @@ public class Grave {
     @Column(name = "grave_number")
     private String graveNumber;
 
-    @Column(name = "postcode", length = 50)
+    @Column(name = "postcode", length = 20)
     private String postcode;
 
     @Column(nullable = false)

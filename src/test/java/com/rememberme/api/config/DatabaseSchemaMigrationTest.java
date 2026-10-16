@@ -31,7 +31,8 @@ public class DatabaseSchemaMigrationTest {
         verify(jdbcTemplate, times(1)).execute("CREATE INDEX IF NOT EXISTS idx_users_postcode_normalized ON users(postcode_normalized)");
         verify(jdbcTemplate, times(1)).execute("CREATE SEQUENCE IF NOT EXISTS organization_code_seq START WITH 1 INCREMENT BY 1");
         verify(jdbcTemplate, times(1)).execute("ALTER TABLE graves ALTER COLUMN grave_number TYPE VARCHAR(100) USING grave_number::VARCHAR");
-        verify(jdbcTemplate, times(1)).execute("ALTER TABLE graves ADD COLUMN IF NOT EXISTS postcode VARCHAR(50)");
+        verify(jdbcTemplate, times(1)).execute("ALTER TABLE graves ADD COLUMN IF NOT EXISTS postcode VARCHAR(20)");
+        verify(jdbcTemplate, times(1)).execute("ALTER TABLE graves ALTER COLUMN postcode TYPE VARCHAR(20)");
 
         // Existing module data must NOT be automatically deleted on startup
         verify(jdbcTemplate, never()).execute("DELETE FROM photos");
