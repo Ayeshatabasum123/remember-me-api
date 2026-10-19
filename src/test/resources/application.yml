@@ -43,3 +43,9 @@ app:
     create-super-admin: false
     email: superadmin@rememberme.com
     password: SuperAdmin@123
+
+stripe:
+  secret-key: sk_test_mock_secret_key
+  publishable-key: pk_test_mock_publishable_key
+  webhook-secret: whsec_mock_webhook_secret
+

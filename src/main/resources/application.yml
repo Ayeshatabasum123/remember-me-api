@@ -75,4 +75,10 @@ app:
     email: ${SUPER_ADMIN_EMAIL:superadmin@rememberme.com}
     password: ${SUPER_ADMIN_PASSWORD:SuperAdmin@123}
 
+stripe:
+  secret-key: ${STRIPE_SECRET_KEY:sk_test_placeholder}
+  publishable-key: ${STRIPE_PUBLISHABLE_KEY:pk_test_placeholder}
+  webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_placeholder}
+
+
 

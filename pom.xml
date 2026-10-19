@@ -122,6 +122,13 @@
             <version>5.2.5</version>
         </dependency>
 
+        <!-- Stripe SDK for Community Burial Fund Donations -->
+        <dependency>
+            <groupId>com.stripe</groupId>
+            <artifactId>stripe-java</artifactId>
+            <version>28.1.0</version>
+        </dependency>
+
         <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
