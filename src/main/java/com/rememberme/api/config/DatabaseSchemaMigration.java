@@ -115,8 +115,47 @@ public class DatabaseSchemaMigration implements CommandLineRunner {
             "CREATE INDEX IF NOT EXISTS idx_donation_dedications_donation_id ON donation_dedications(donation_id)",
             "CREATE INDEX IF NOT EXISTS idx_payment_events_type ON payment_events(event_type)",
             "CREATE INDEX IF NOT EXISTS idx_fund_ledger_entry_type ON fund_ledger(entry_type)",
-            "CREATE INDEX IF NOT EXISTS idx_fund_ledger_created_at ON fund_ledger(created_at)"
-
+            "CREATE INDEX IF NOT EXISTS idx_fund_ledger_created_at ON fund_ledger(created_at)",
+            "CREATE TABLE IF NOT EXISTS fund_settings (" +
+                "id BIGSERIAL PRIMARY KEY, " +
+                "fund_name VARCHAR(255) NOT NULL, " +
+                "introduction TEXT, " +
+                "purpose TEXT NOT NULL, " +
+                "description TEXT NOT NULL, " +
+                "donation_information TEXT, " +
+                "privacy_information TEXT NOT NULL, " +
+                "funding_disclaimer TEXT NOT NULL, " +
+                "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, " +
+                "updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+            "INSERT INTO fund_settings (fund_name, introduction, purpose, description, donation_information, privacy_information, funding_disclaimer, created_at, updated_at) " +
+                "SELECT 'Remember Me Community Burial Fund', " +
+                "'Providing compassionate, communal burial assistance to families facing financial hardship.', " +
+                "'To relieve burial and funeral poverty by providing direct, discreet financial assistance to verified burial service providers on behalf of bereaved families in need.', " +
+                "'The Remember Me Community Burial Fund is a collective community initiative dedicated to ensuring every individual receives a dignified burial regardless of financial hardship. All contributions flow directly into a central, strictly audited communal fund.', " +
+                "'Donations of any amount are welcomed via card, Apple Pay, and Google Pay. You may dedicate your contribution in loving memory of deceased relatives, which serves as a tribute and prayer.', " +
+                "'Strict applicant privacy is guaranteed by policy and system architecture. Financial hardship cases, family identities, applicant names, and documents are kept strictly confidential and are never published on memorials, public grave registries, or public impact dashboards.', " +
+                "'Financial assistance is subject to fund availability, independent verification of burial costs, and two-person administrative approval. An application does not guarantee funding.', " +
+                "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP " +
+                "WHERE NOT EXISTS (SELECT 1 FROM fund_settings)",
+            "ALTER TABLE donation_dedications ADD COLUMN IF NOT EXISTS loved_one_name VARCHAR(255)",
+            "ALTER TABLE donation_dedications ADD COLUMN IF NOT EXISTS dedication_message TEXT",
+            "UPDATE donation_dedications SET loved_one_name = dedication_name WHERE loved_one_name IS NULL",
+            "UPDATE donation_dedications SET dedication_message = message WHERE dedication_message IS NULL",
+            "ALTER TABLE donations ADD COLUMN IF NOT EXISTS payment_provider VARCHAR(50) DEFAULT 'STRIPE'",
+            "ALTER TABLE donations ADD COLUMN IF NOT EXISTS provider_payment_id VARCHAR(255)",
+            "UPDATE donations SET provider_payment_id = stripe_payment_intent_id WHERE provider_payment_id IS NULL",
+            "CREATE TABLE IF NOT EXISTS payment_transactions (" +
+                "id BIGSERIAL PRIMARY KEY, " +
+                "donation_id BIGINT NOT NULL REFERENCES donations(id) ON DELETE CASCADE, " +
+                "provider_transaction_id VARCHAR(255), " +
+                "amount NUMERIC(12, 2) NOT NULL, " +
+                "amount_pence BIGINT NOT NULL, " +
+                "currency VARCHAR(3) NOT NULL DEFAULT 'GBP', " +
+                "status VARCHAR(32) NOT NULL, " +
+                "transaction_type VARCHAR(50) NOT NULL, " +
+                "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+            "CREATE INDEX IF NOT EXISTS idx_payment_transactions_donation_id ON payment_transactions(donation_id)",
+            "CREATE INDEX IF NOT EXISTS idx_payment_transactions_provider_id ON payment_transactions(provider_transaction_id)"
         };
 
         for (String sql : migrations) {

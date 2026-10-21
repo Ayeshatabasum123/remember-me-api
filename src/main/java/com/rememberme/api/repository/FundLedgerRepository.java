@@ -40,4 +40,10 @@ public interface FundLedgerRepository extends JpaRepository<FundLedger, Long> {
 
     @Query("SELECT COUNT(fl) FROM FundLedger fl WHERE fl.entryType = 'DONATION_SETTLEMENT'")
     long countSettledDonationEntries();
+
+    @Query("SELECT COUNT(fl) FROM FundLedger fl WHERE fl.entryType = 'BURIAL_SUPPORT_DISBURSEMENT'")
+    long countDisbursementEntries();
+
+    @Query("SELECT COALESCE(SUM(ABS(fl.netAmountPence)), 0) FROM FundLedger fl WHERE fl.entryType = 'BURIAL_SUPPORT_DISBURSEMENT'")
+    long sumTotalDisbursementsPence();
 }

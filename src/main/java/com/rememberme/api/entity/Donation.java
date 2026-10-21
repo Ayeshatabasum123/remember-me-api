@@ -83,6 +83,13 @@ public class Donation {
     @Column(name = "client_secret", length = 512)
     private String clientSecret;
 
+    @Column(name = "payment_provider", length = 50)
+    @Builder.Default
+    private String paymentProvider = "STRIPE";
+
+    @Column(name = "provider_payment_id")
+    private String providerPaymentId;
+
     @Column(name = "donor_email")
     private String donorEmail;
 
@@ -126,10 +133,25 @@ public class Donation {
         if (refundedAmountPence == null) {
             refundedAmountPence = 0L;
         }
+        if (paymentProvider == null) {
+            paymentProvider = "STRIPE";
+        }
+        if (providerPaymentId == null && stripePaymentIntentId != null) {
+            providerPaymentId = stripePaymentIntentId;
+        }
+        if (stripePaymentIntentId == null && providerPaymentId != null) {
+            stripePaymentIntentId = providerPaymentId;
+        }
     }
 
     @PreUpdate
     public void preUpdate() {
         updatedAt = LocalDateTime.now();
+        if (providerPaymentId == null && stripePaymentIntentId != null) {
+            providerPaymentId = stripePaymentIntentId;
+        }
+        if (stripePaymentIntentId == null && providerPaymentId != null) {
+            stripePaymentIntentId = providerPaymentId;
+        }
     }
 }

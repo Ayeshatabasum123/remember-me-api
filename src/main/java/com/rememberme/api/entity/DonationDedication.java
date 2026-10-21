@@ -37,6 +37,9 @@ public class DonationDedication {
     @Column(name = "dedication_name", nullable = false)
     private String dedicationName;
 
+    @Column(name = "loved_one_name")
+    private String lovedOneName;
+
     @Column(name = "deceased_person_id")
     private Long deceasedPersonId;
 
@@ -46,6 +49,9 @@ public class DonationDedication {
     @Column(name = "message", columnDefinition = "TEXT")
     private String message;
 
+    @Column(name = "dedication_message", columnDefinition = "TEXT")
+    private String dedicationMessage;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -53,6 +59,18 @@ public class DonationDedication {
     public void prePersist() {
         if (createdAt == null) {
             createdAt = LocalDateTime.now();
+        }
+        if (lovedOneName == null && dedicationName != null) {
+            lovedOneName = dedicationName;
+        }
+        if (dedicationName == null && lovedOneName != null) {
+            dedicationName = lovedOneName;
+        }
+        if (dedicationMessage == null && message != null) {
+            dedicationMessage = message;
+        }
+        if (message == null && dedicationMessage != null) {
+            message = dedicationMessage;
         }
     }
 }

@@ -52,8 +52,12 @@ public class SecurityConfig {
         "/v3/api-docs/**",
         "/v3/api-docs.yaml",
         "/api/v1/webhooks/**",
+        "/api/payments/webhook",
+        "/api/payments/webhook/**",
         "/api/v1/fund/**",
-        "/api/v1/donations/options"
+        "/api/fund/**",
+        "/api/v1/donations/options",
+        "/api/donations/amounts"
     };
 
     @Bean

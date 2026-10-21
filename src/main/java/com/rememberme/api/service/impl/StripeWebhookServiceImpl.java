@@ -30,6 +30,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
+import com.rememberme.api.communityfund.entity.PaymentTransaction;
+import com.rememberme.api.communityfund.repository.PaymentTransactionRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import java.math.BigDecimal;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -41,6 +46,9 @@ public class StripeWebhookServiceImpl implements StripeWebhookService {
     private final DonationRepository donationRepository;
     private final DonationReceiptService donationReceiptService;
     private final FundLedgerService fundLedgerService;
+
+    @Autowired(required = false)
+    private PaymentTransactionRepository paymentTransactionRepository;
 
     @Override
     @Transactional
@@ -205,6 +213,9 @@ public class StripeWebhookServiceImpl implements StripeWebhookService {
         // 2. Generate official donation receipt exactly once
         donationReceiptService.generateReceipt(donation, paymentMethod, chargeId, receiptUrl);
 
+        // 3. Record transaction audit
+        recordTransaction(donation, piId, donation.getAmountPence(), "SUCCESS", "PAYMENT_CONFIRMED");
+
         log.info("Successfully processed payment_intent.succeeded for donationId: {}", donation.getId());
     }
 
@@ -228,6 +239,7 @@ public class StripeWebhookServiceImpl implements StripeWebhookService {
 
         donation.setPaymentStatus(DonationPaymentStatus.FAILED);
         donationRepository.save(donation);
+        recordTransaction(donation, paymentIntent.getId(), donation.getAmountPence(), "FAILED", "PAYMENT_FAILED");
         log.info("Marked donation {} as FAILED", donation.getId());
     }
 
@@ -248,6 +260,7 @@ public class StripeWebhookServiceImpl implements StripeWebhookService {
 
         donation.setPaymentStatus(DonationPaymentStatus.CANCELLED);
         donationRepository.save(donation);
+        recordTransaction(donation, paymentIntent.getId(), donation.getAmountPence(), "CANCELLED", "PAYMENT_CANCELLED");
         log.info("Marked donation {} as CANCELLED", donation.getId());
     }
 
@@ -265,7 +278,6 @@ public class StripeWebhookServiceImpl implements StripeWebhookService {
         if (donation == null) {
             donation = donationRepository.findByStripeChargeId(charge.getId()).orElse(null);
         }
-
         if (donation == null) {
             log.warn("No donation found for refunded charge: {}", charge.getId());
             return;
@@ -285,7 +297,27 @@ public class StripeWebhookServiceImpl implements StripeWebhookService {
         // Record negative adjustment in the fund ledger
         String refundId = event.getId();
         fundLedgerService.recordDonationRefund(donation, amountRefundedPence, refundId, "Stripe Charge Refund");
+        recordTransaction(donation, charge.getId(), amountRefundedPence, "REFUNDED", "PAYMENT_REFUNDED");
         log.info("Recorded refund of {} pence for donationId: {}", amountRefundedPence, donation.getId());
+    }
+
+    private void recordTransaction(Donation donation, String providerTxId, long amountPence, String status, String txType) {
+        if (paymentTransactionRepository != null && donation != null) {
+            try {
+                paymentTransactionRepository.save(PaymentTransaction.builder()
+                        .donation(donation)
+                        .providerTransactionId(providerTxId)
+                        .amount(BigDecimal.valueOf(amountPence, 2))
+                        .amountPence(amountPence)
+                        .currency(donation.getCurrency() != null ? donation.getCurrency() : "GBP")
+                        .status(status)
+                        .transactionType(txType)
+                        .createdAt(LocalDateTime.now())
+                        .build());
+            } catch (Exception e) {
+                log.warn("Could not record payment transaction audit for donation {}: {}", donation.getId(), e.getMessage());
+            }
+        }
     }
 
     private void handleDisputeCreated(Event event, PaymentEvent paymentEvent) {
