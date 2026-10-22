@@ -4,6 +4,9 @@ package com.rememberme.api.communityfund.enums;
  * Types of supporting documents uploaded for a burial support request.
  */
 public enum SupportDocumentType {
+    INVOICE,
+    QUOTATION,
+    SUPPORTING_DOCUMENT,
     BURIAL_ESTIMATE,
     FUNERAL_DIRECTOR_INVOICE,
     CEMETERY_FEE_BILL,

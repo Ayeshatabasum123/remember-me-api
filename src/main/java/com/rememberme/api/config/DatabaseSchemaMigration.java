@@ -155,7 +155,142 @@ public class DatabaseSchemaMigration implements CommandLineRunner {
                 "transaction_type VARCHAR(50) NOT NULL, " +
                 "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)",
             "CREATE INDEX IF NOT EXISTS idx_payment_transactions_donation_id ON payment_transactions(donation_id)",
-            "CREATE INDEX IF NOT EXISTS idx_payment_transactions_provider_id ON payment_transactions(provider_transaction_id)"
+            "CREATE INDEX IF NOT EXISTS idx_payment_transactions_provider_id ON payment_transactions(provider_transaction_id)",
+            "CREATE TABLE IF NOT EXISTS support_requests (" +
+                "id BIGSERIAL PRIMARY KEY, " +
+                "applicant_user_id BIGINT NOT NULL REFERENCES users(id), " +
+                "applicant_name VARCHAR(255) NOT NULL, " +
+                "email VARCHAR(255) NOT NULL, " +
+                "phone VARCHAR(50) NOT NULL, " +
+                "relationship_to_deceased VARCHAR(100) NOT NULL, " +
+                "authority_to_apply BOOLEAN NOT NULL DEFAULT true, " +
+                "burial_provider_name VARCHAR(255) NOT NULL, " +
+                "burial_provider_contact VARCHAR(100) NOT NULL, " +
+                "total_cost NUMERIC(12, 2) NOT NULL, " +
+                "other_funding NUMERIC(12, 2) NOT NULL DEFAULT 0.00, " +
+                "requested_amount NUMERIC(12, 2) NOT NULL, " +
+                "currency VARCHAR(3) NOT NULL DEFAULT 'GBP', " +
+                "urgency VARCHAR(32) NOT NULL DEFAULT 'MEDIUM', " +
+                "supporting_notes TEXT, " +
+                "status VARCHAR(32) NOT NULL DEFAULT 'PENDING', " +
+                "idempotency_key VARCHAR(255), " +
+                "provider_verified BOOLEAN NOT NULL DEFAULT false, " +
+                "provider_verification_notes TEXT, " +
+                "review_notes TEXT, " +
+                "reviewed_by BIGINT REFERENCES users(id), " +
+                "reviewed_at TIMESTAMP, " +
+                "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, " +
+                "updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+            "CREATE INDEX IF NOT EXISTS idx_support_requests_applicant_user_id ON support_requests(applicant_user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_support_requests_status ON support_requests(status)",
+            "CREATE INDEX IF NOT EXISTS idx_support_requests_urgency ON support_requests(urgency)",
+            "CREATE INDEX IF NOT EXISTS idx_support_requests_created_at ON support_requests(created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_support_requests_idempotency_key ON support_requests(idempotency_key)",
+            "CREATE TABLE IF NOT EXISTS support_documents (" +
+                "id BIGSERIAL PRIMARY KEY, " +
+                "support_request_id BIGINT NOT NULL REFERENCES support_requests(id) ON DELETE CASCADE, " +
+                "document_type VARCHAR(50) NOT NULL, " +
+                "original_filename VARCHAR(255) NOT NULL, " +
+                "storage_reference VARCHAR(512) NOT NULL, " +
+                "content_type VARCHAR(100) NOT NULL, " +
+                "file_size BIGINT NOT NULL, " +
+                "file_hash VARCHAR(64), " +
+                "uploaded_by BIGINT NOT NULL REFERENCES users(id), " +
+                "uploaded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+            "CREATE INDEX IF NOT EXISTS idx_support_documents_request_id ON support_documents(support_request_id)",
+            "CREATE INDEX IF NOT EXISTS idx_support_documents_uploaded_by ON support_documents(uploaded_by)",
+            "CREATE INDEX IF NOT EXISTS idx_support_documents_type ON support_documents(document_type)",
+            "CREATE INDEX IF NOT EXISTS idx_support_documents_file_hash ON support_documents(file_hash)",
+            "CREATE TABLE IF NOT EXISTS support_request_updates (" +
+                "id BIGSERIAL PRIMARY KEY, " +
+                "support_request_id BIGINT NOT NULL REFERENCES support_requests(id) ON DELETE CASCADE, " +
+                "previous_status VARCHAR(32), " +
+                "new_status VARCHAR(32) NOT NULL, " +
+                "update_message TEXT NOT NULL, " +
+                "updated_by BIGINT REFERENCES users(id), " +
+                "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+            "CREATE INDEX IF NOT EXISTS idx_support_updates_request_id ON support_request_updates(support_request_id)",
+            "CREATE INDEX IF NOT EXISTS idx_support_updates_created_at ON support_request_updates(created_at)",
+            "CREATE TABLE IF NOT EXISTS support_information_requests (" +
+                "id BIGSERIAL PRIMARY KEY, " +
+                "support_request_id BIGINT NOT NULL REFERENCES support_requests(id) ON DELETE CASCADE, " +
+                "requested_by BIGINT NOT NULL REFERENCES users(id), " +
+                "information_required TEXT NOT NULL, " +
+                "status VARCHAR(32) NOT NULL DEFAULT 'PENDING', " +
+                "response_message TEXT, " +
+                "requested_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, " +
+                "responded_at TIMESTAMP)",
+            "CREATE INDEX IF NOT EXISTS idx_support_info_requests_request_id ON support_information_requests(support_request_id)",
+            "CREATE INDEX IF NOT EXISTS idx_support_info_requests_status ON support_information_requests(status)",
+            "CREATE INDEX IF NOT EXISTS idx_support_info_requests_requested_at ON support_information_requests(requested_at)",
+            "CREATE TABLE IF NOT EXISTS support_approvals (" +
+                "id BIGSERIAL PRIMARY KEY, " +
+                "support_request_id BIGINT NOT NULL REFERENCES support_requests(id) ON DELETE CASCADE, " +
+                "approver_user_id BIGINT NOT NULL REFERENCES users(id), " +
+                "decision VARCHAR(32) NOT NULL, " +
+                "approved_amount NUMERIC(12, 2) NOT NULL, " +
+                "decision_reason TEXT NOT NULL, " +
+                "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, " +
+                "CONSTRAINT uk_support_approvals_request_approver UNIQUE (support_request_id, approver_user_id))",
+            "CREATE INDEX IF NOT EXISTS idx_support_approvals_request_id ON support_approvals(support_request_id)",
+            "CREATE INDEX IF NOT EXISTS idx_support_approvals_approver ON support_approvals(approver_user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_support_approvals_decision ON support_approvals(decision)",
+            "CREATE TABLE IF NOT EXISTS fund_reservations (" +
+                "id BIGSERIAL PRIMARY KEY, " +
+                "support_request_id BIGINT NOT NULL REFERENCES support_requests(id), " +
+                "amount NUMERIC(12, 2) NOT NULL, " +
+                "amount_pence BIGINT NOT NULL, " +
+                "reservation_status VARCHAR(32) NOT NULL DEFAULT 'RESERVED', " +
+                "reason TEXT, " +
+                "reserved_by BIGINT NOT NULL REFERENCES users(id), " +
+                "released_by BIGINT REFERENCES users(id), " +
+                "release_reason TEXT, " +
+                "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, " +
+                "released_at TIMESTAMP)",
+            "CREATE INDEX IF NOT EXISTS idx_fund_reservations_request_id ON fund_reservations(support_request_id)",
+            "CREATE INDEX IF NOT EXISTS idx_fund_reservations_status ON fund_reservations(reservation_status)",
+            "CREATE TABLE IF NOT EXISTS provider_payments (" +
+                "id BIGSERIAL PRIMARY KEY, " +
+                "support_request_id BIGINT NOT NULL REFERENCES support_requests(id), " +
+                "reservation_id BIGINT NOT NULL REFERENCES fund_reservations(id), " +
+                "provider_name VARCHAR(255) NOT NULL, " +
+                "amount NUMERIC(12, 2) NOT NULL, " +
+                "amount_pence BIGINT NOT NULL, " +
+                "currency VARCHAR(3) NOT NULL DEFAULT 'GBP', " +
+                "payment_reference VARCHAR(255) NOT NULL UNIQUE, " +
+                "status VARCHAR(32) NOT NULL DEFAULT 'PENDING', " +
+                "initiated_by BIGINT NOT NULL REFERENCES users(id), " +
+                "confirmed_by BIGINT REFERENCES users(id), " +
+                "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, " +
+                "paid_at TIMESTAMP)",
+            "CREATE INDEX IF NOT EXISTS idx_provider_payments_request_id ON provider_payments(support_request_id)",
+            "CREATE INDEX IF NOT EXISTS idx_provider_payments_reservation_id ON provider_payments(reservation_id)",
+            "CREATE INDEX IF NOT EXISTS idx_provider_payments_status ON provider_payments(status)",
+            "CREATE TABLE IF NOT EXISTS refunds (" +
+                "id BIGSERIAL PRIMARY KEY, " +
+                "original_transaction_id BIGINT NOT NULL, " +
+                "donation_id BIGINT REFERENCES donations(id), " +
+                "amount NUMERIC(12, 2) NOT NULL, " +
+                "amount_pence BIGINT NOT NULL, " +
+                "currency VARCHAR(3) NOT NULL DEFAULT 'GBP', " +
+                "reason TEXT NOT NULL, " +
+                "status VARCHAR(32) NOT NULL DEFAULT 'COMPLETED', " +
+                "processed_by BIGINT NOT NULL REFERENCES users(id), " +
+                "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, " +
+                "completed_at TIMESTAMP)",
+            "CREATE INDEX IF NOT EXISTS idx_refunds_original_tx ON refunds(original_transaction_id)",
+            "CREATE INDEX IF NOT EXISTS idx_refunds_donation_id ON refunds(donation_id)",
+            "CREATE INDEX IF NOT EXISTS idx_refunds_status ON refunds(status)",
+            "CREATE TABLE IF NOT EXISTS audit_logs (" +
+                "id BIGSERIAL PRIMARY KEY, " +
+                "performed_by_user_id BIGINT REFERENCES users(id), " +
+                "action VARCHAR(255) NOT NULL, " +
+                "entity_type VARCHAR(100), " +
+                "entity_id BIGINT, " +
+                "details TEXT, " +
+                "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+            "CREATE INDEX IF NOT EXISTS idx_audit_logs_performed_by ON audit_logs(performed_by_user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_type, entity_id)"
         };
 
         for (String sql : migrations) {

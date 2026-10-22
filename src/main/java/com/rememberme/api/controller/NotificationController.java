@@ -22,6 +22,11 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import com.rememberme.api.dto.response.NotificationResponseDto;
+import com.rememberme.api.entity.Notification;
+import com.rememberme.api.repository.NotificationRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
@@ -35,9 +40,23 @@ import java.time.LocalDateTime;
 public class NotificationController {
 
     private final UserRepository userRepository;
+    private final NotificationRepository notificationRepository;
     private final FirebaseNotificationService firebaseNotificationService;
     private final NotificationPreferenceService preferenceService;
     private final FuneralNotificationEngineService notificationEngineService;
+
+    @GetMapping("/me")
+    @Operation(summary = "Get current user notifications", description = "Retrieves paginated notifications for authenticated user", security = @SecurityRequirement(name = "bearerAuth"))
+    public ApiResponse<Page<NotificationResponseDto>> getMyNotifications(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            Authentication authentication) {
+        User user = findAuthenticatedUser(authentication);
+        Page<Notification> notifications = notificationRepository.findByUserIdOrderByCreatedAtDesc(
+                user.getId(), PageRequest.of(Math.max(0, page), Math.max(1, Math.min(size, 100))));
+        Page<NotificationResponseDto> response = notifications.map(NotificationResponseDto::fromEntity);
+        return ApiResponse.success("Notifications retrieved successfully", response);
+    }
 
     @PostMapping("/token")
     @Operation(

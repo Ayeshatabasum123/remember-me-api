@@ -52,6 +52,9 @@ class NotificationControllerTest {
     private FuneralNotificationEngineService notificationEngineService;
 
     @MockBean
+    private com.rememberme.api.repository.NotificationRepository notificationRepository;
+
+    @MockBean
     private JwtUtil jwtUtil;
 
     @MockBean
