@@ -13,9 +13,9 @@ spring:
       max-request-size: 10MB
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:${DATABASE_URL:jdbc:postgresql://dpg-db2930rncjis73drf110-a.oregon-postgres.render.com/remember_me_db_veac?sslmode=require}}
-    username: ${SPRING_DATASOURCE_USERNAME:remember_me_user}
-    password: ${SPRING_DATASOURCE_PASSWORD:zv3pfTZyXSmkn0tfWBPGyAxvNFXwSgJS}
+    url: ${SPRING_DATASOURCE_URL:${jdbc:postgresql://dpg-dbmpdjqjnfac73b4lm7g-a:5432/remember_me_db_2026}}
+    username: ${SPRING_DATASOURCE_USERNAME:reremember_me_db_2026_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:nFe3USBc0u73ERGrS6ho5PWWVFE0yj0d}
     driver-class-name: org.postgresql.Driver
 
   jpa:
